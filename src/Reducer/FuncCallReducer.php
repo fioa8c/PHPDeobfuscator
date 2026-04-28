@@ -11,6 +11,12 @@ use PHPDeobfuscator\ValRef\ScalarValue;
 class FuncCallReducer extends AbstractReducer
 {
     private $funcCallMap = array();
+    private $resolver;
+
+    public function __construct(\PHPDeobfuscator\Resolver $resolver)
+    {
+        $this->resolver = $resolver;
+    }
 
     public function addReducer(FuncCallReducer\FunctionReducer $reducer)
     {
