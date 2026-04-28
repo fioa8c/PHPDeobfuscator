@@ -33,7 +33,7 @@ class UnaryReducer extends AbstractReducer
     public function reduceDoubleCast(Cast\Double $node)
     {
         $val = Utils::getValue($node->expr);
-        return Utils::scalarToNode((double) $val);
+        return Utils::scalarToNode((float) $val);
     }
 
     public function reduceIntCast(Cast\Int_ $node)
@@ -74,7 +74,11 @@ class UnaryReducer extends AbstractReducer
         // Perform the operation and create old and new nodes
         $val = Utils::getValue($node->var);
         $oldValNode = Utils::scalarToNode($val);
-        $isInc ? $val++ : $val--;
+        if ($isInc && is_string($val) && !is_numeric($val) && $val !== '') {
+            $val = str_increment($val);
+        } else {
+            $isInc ? $val++ : $val--;
+        }
         $newValNode = Utils::scalarToNode($val);
 
         // Internally set the new value on the variable

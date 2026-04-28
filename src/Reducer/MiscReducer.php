@@ -16,9 +16,16 @@ class MiscReducer extends AbstractReducer
                 $newString .= $part->value;
             } else {
                 try {
-                    $newString .= Utils::getValue($part);
+                    $value = Utils::getValue($part);
                 } catch (\InvalidArgumentException $e) {
                     return null;
+                }
+                if (is_array($value)) {
+                    $newString .= 'Array';
+                } elseif (is_object($value)) {
+                    return null;
+                } else {
+                    $newString .= $value;
                 }
             }
         }

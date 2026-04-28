@@ -30,6 +30,9 @@ class ArrayVal extends AbstractValRef
     public function arrayFetch($dim)
     {
         $this->checkMutable();
+        if ($dim === null) {
+            $dim = '';
+        }
         if (!isset($this->backingArray()[$dim])) {
             return null;
         }
