@@ -137,13 +137,15 @@ class FuncCallReducer extends AbstractReducer
     private $funcCallMap = array();
     private $resolver;
 
-    public function __construct(\PHPDeobfuscator\Resolver $resolver)
+    public function __construct(Resolver $resolver)
     {
         $this->resolver = $resolver;
     }
 
     public function addReducer(FuncCallReducer\FunctionReducer $reducer)
 ```
+
+Also add `use PHPDeobfuscator\Resolver;` to the existing `use` block at the top of the file (alphabetically between `FunctionSandbox` and `Utils`). Sibling reducers (`MagicReducer`, `UnaryReducer`, `MiscFunctions`) all import `Resolver` via `use`; matching them keeps the dependency surface visible at a glance.
 
 - [ ] **Step 2: Pass `$resolver` to the `FuncCallReducer` at the call site.**
 
