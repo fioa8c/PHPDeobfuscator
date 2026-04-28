@@ -21,7 +21,11 @@ abstract class AbstractReducer implements Reducer
                         throw new \LogicException("Number of parameters is not 1");
                     }
                     $param = $method->getParameters()[0];
-                    $type = $param->getClass();
+                    $paramType = $param->getType();
+                    if (!($paramType instanceof \ReflectionNamedType) || $paramType->isBuiltin()) {
+                        throw new \LogicException("Parameter must be a class type-hint");
+                    }
+                    $type = new \ReflectionClass($paramType->getName());
                     if (!$type->implementsInterface(Node::class)) {
                         throw new \LogicException("Parameter must be instance of Node");
                     }
