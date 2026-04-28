@@ -374,7 +374,7 @@ class Resolver extends \PhpParser\NodeVisitorAbstract
         $this->assign($var, $val);
     }
 
-    private function assign(VarRef $var, ValRef $val = null)
+    private function assign(VarRef $var, ?ValRef $val = null)
     {
         $didAssign = false;
         if ($val !== null) {

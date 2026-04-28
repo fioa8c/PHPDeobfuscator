@@ -14,7 +14,7 @@ class UnknownVarRef implements VarRef
     private $context;
     private $notAVarRef;
 
-    public function __construct(VarRef $parentContext = null, $notAVarRef = false)
+    public function __construct(?VarRef $parentContext = null, $notAVarRef = false)
     {
         $this->context = $parentContext;
         $this->notAVarRef = $notAVarRef;

@@ -9,7 +9,7 @@ class Scope
     private $parentScope;
     private $variables = array();
 
-    public function __construct($name, Scope $parent = null)
+    public function __construct($name, ?Scope $parent = null)
     {
         $this->name = $name;
         $this->superGlobals = $parent ? $parent->getSuperGlobals() : array();
