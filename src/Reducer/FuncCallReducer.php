@@ -83,24 +83,24 @@ class FuncCallReducer extends AbstractReducer
      * at PHP-runtime call time. Acceptable for deobfuscation readability;
      * obfuscators don't reassign their function-name globals.
      */
-    private function resolveGlobalsLiteralName(\PhpParser\Node $expr)
+    private function resolveGlobalsLiteralName(Node $expr)
     {
-        if (!($expr instanceof \PhpParser\Node\Expr\ArrayDimFetch)) {
+        if (!($expr instanceof Node\Expr\ArrayDimFetch)) {
             return null;
         }
         $var = $expr->var;
-        if (!($var instanceof \PhpParser\Node\Expr\Variable)) {
+        if (!($var instanceof Node\Expr\Variable)) {
             return null;
         }
         if (!is_string($var->name) || $var->name !== 'GLOBALS') {
             return null;
         }
         $dim = $expr->dim;
-        if (!($dim instanceof \PhpParser\Node\Scalar\String_)) {
+        if (!($dim instanceof Node\Scalar\String_)) {
             return null;
         }
         $valRef = $this->resolver->getGlobalScope()->getVariable($dim->value);
-        if (!($valRef instanceof \PHPDeobfuscator\ValRef\ScalarValue)) {
+        if (!($valRef instanceof ScalarValue)) {
             return null;
         }
         // Bypass the mutability check intentionally — that's the whole

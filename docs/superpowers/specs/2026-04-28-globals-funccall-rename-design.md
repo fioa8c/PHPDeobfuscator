@@ -35,7 +35,7 @@ reduceFunctionCall(FuncCall $node)
   if $node->name instanceof Node\Name      → existing path
   else
     try { $name = Utils::getValue($node->name) }    → existing path (rewrites $node->name in place)
-    catch UnknownValueException:                    (newly caught LOCALLY — see note below)
+    catch BadValueException:                        (newly caught LOCALLY — see note below)
       $name = resolveGlobalsLiteralName($node->name)
       if $name === null:
           return                            (leave the original call untouched)
@@ -43,9 +43,9 @@ reduceFunctionCall(FuncCall $node)
     return makeFunctionCall(strtolower($name), $node)
 ```
 
-**Note on the local catch:** Today `Utils::getValue` throws `UnknownValueException` (a `BadValueException` subclass) when no `VALUE` attribute is set, and that exception propagates all the way up to `ReducerVisitor::leaveNode`, which silently swallows it. To make the fallback reachable we must catch `UnknownValueException` *locally* inside `reduceFunctionCall`. Other `BadValueException` subclasses (`MutableValueException`) should continue to propagate so existing behaviour is preserved — the local catch must be narrow.
+**Note on the local catch:** Today `Utils::getValue` can throw two `BadValueException` subclasses — `UnknownValueException` (no `VALUE` attribute set) and `MutableValueException` (the underlying `ValRef` was flagged mutable). Both currently propagate up to `ReducerVisitor::leaveNode`, which silently swallows `BadValueException`. The real-world failure on `bWNAdf.php` is the `MutableValueException` path: `Resolver::setCurrentVarsMutable` fires on any branching statement in the global scope and marks the `ScalarValue`s mutable, so `Utils::getValue($GLOBALS["foo"])` throws `MutableValueException` and the existing rewrite never happens. To make the fallback reachable in that real failure mode, the local catch must cover `BadValueException` (the parent), not just `UnknownValueException`. The previously-swallowed behaviour for non-`$GLOBALS["literal"]` shapes is preserved automatically: those shapes hit the helper, the helper returns `null`, and `reduceFunctionCall` returns early — the same observable outcome as the propagated-then-swallowed path.
 
-`resolveGlobalsLiteralName(Node $expr)` recognises exactly one shape: `Expr\ArrayDimFetch` whose `var` is `Expr\Variable` named `"GLOBALS"` and whose `dim` is `Scalar\String_`. On a hit it reads from `Resolver::getGlobalScope()->getVariable($key)` directly — bypassing `GlobalVarArray::arrayFetch` and its `checkMutable()` call, which is what defeats the existing path.
+`resolveGlobalsLiteralName(Node $expr)` recognises exactly one shape: `Expr\ArrayDimFetch` whose `var` is `Expr\Variable` named `"GLOBALS"` and whose `dim` is `Scalar\String_`. On a hit it reads from `Resolver::getGlobalScope()->getVariable($key)` directly. Because the resulting `ScalarValue` may itself be flagged mutable, the helper temporarily toggles `setMutable(false)` around its `getValue()` call (restored in a `finally` block) — that's the bypass.
 
 If the global lookup yields a `ScalarValue` whose value is a string matching the identifier regex below, we return that string. Anything else → return `null` and the call stays as-is.
 
