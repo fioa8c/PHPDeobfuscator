@@ -74,7 +74,7 @@ class UnaryReducer extends AbstractReducer
         // Perform the operation and create old and new nodes
         $val = Utils::getValue($node->var);
         $oldValNode = Utils::scalarToNode($val);
-        if ($isInc && is_string($val) && !is_numeric($val) && $val !== '') {
+        if ($isInc && is_string($val) && !is_numeric($val) && $val !== '' && function_exists('str_increment')) {
             $val = str_increment($val);
         } else {
             $isInc ? $val++ : $val--;

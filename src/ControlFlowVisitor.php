@@ -241,6 +241,9 @@ class WrappedNode implements Node
     public $stmts;
     public $elseifs;
     public $else;
+    public $cases;
+    public $catches;
+    public $finally;
 
     public function __construct(Node $node, array $subNodes)
     {
