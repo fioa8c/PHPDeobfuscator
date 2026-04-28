@@ -6,6 +6,7 @@ if (true) {
 $g = function ($x) {
     return $GLOBALS['f']($x);
 };
+
 OUTPUT
 $f = 'strrev';
 if (true) {
@@ -23,6 +24,7 @@ if (true) {
 $g = function ($x) {
     return @$GLOBALS['f']($x);
 };
+
 OUTPUT
 $f = 'strrev';
 if (true) {
