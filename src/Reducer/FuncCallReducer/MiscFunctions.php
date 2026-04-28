@@ -148,7 +148,7 @@ class MiscFunctions implements FunctionReducer
         try {
             // Wrap it into a closure and return that closure
             $stmts = $this->evalReducer->runEvalTree("(function($args) { $code });");
-            return $stmts[0];
+            return $stmts[0]->expr;
         } catch (\Exception $e) {
             return null;
         }

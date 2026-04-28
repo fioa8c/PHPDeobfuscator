@@ -178,3 +178,13 @@ OUTPUT
 $x = "A";
 $func = 'oRD';
 $y = 65;
+
+INPUT
+
+$x = create_function('', 'echo "hello";');
+
+OUTPUT
+
+$x = function () {
+    echo "hello";
+};
