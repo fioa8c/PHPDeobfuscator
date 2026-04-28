@@ -61,3 +61,15 @@ OUTPUT
 $g = function () {
     $GLOBALS['never_assigned']();
 };
+
+INPUT
+$f = 'strrev';
+$g = function ($x) {
+    return $GLOBALS['f']($x);
+};
+
+OUTPUT
+$f = 'strrev';
+$g = function ($x) {
+    return strrev($x);
+};
