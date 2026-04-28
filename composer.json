@@ -2,8 +2,8 @@
     "require": {
         "php": "^8.0",
         "nikic/php-parser": "^4",
-        "league/flysystem": "^2",
-        "league/flysystem-memory": "^2"
+        "league/flysystem": "^3",
+        "league/flysystem-memory": "^3"
     },
     "autoload": {
         "psr-4": {

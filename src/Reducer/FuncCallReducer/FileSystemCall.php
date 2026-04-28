@@ -4,7 +4,6 @@ namespace PHPDeobfuscator\Reducer\FuncCallReducer;
 
 use PhpParser\Node\Expr\FuncCall;
 use League\Flysystem\Filesystem;
-use League\Flysystem\FileNotFoundException;
 
 use PHPDeobfuscator\AttrName;
 use PHPDeobfuscator\Exceptions;
@@ -68,11 +67,10 @@ class FileSystemCall implements FunctionReducer
     private function fopen(FuncCall $node, $filename, $mode, $use_include_path = false, $context = null)
     {
         if (strpos($mode, 'r') !== false) {
-            try {
-                $stream = $this->fileSystem->readStream($filename);
-            } catch (FileNotFoundException $e) {
+            if (!Utils::safeFileExists($this->fileSystem, $filename)) {
                 return;
             }
+            $stream = $this->fileSystem->readStream($filename);
         } elseif (strpos($mode, 'w') !== false) {
             $stream = fopen('php://memory', 'w+b');
             $this->fileSystem->writeStream($filename, $stream);
