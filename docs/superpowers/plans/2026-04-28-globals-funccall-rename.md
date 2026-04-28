@@ -49,25 +49,33 @@ php -d error_reporting=E_ALL test.php 2>&1 | grep -c ' pass$'
 
 ---
 
-## Task 2: Add the failing happy-path fixture
+## Task 2: Add the failing happy-path fixture (with mutability trigger)
 
 Pure TDD anchor: write the test, watch it fail, then implement.
+
+**Critical context discovered during T2's first attempt:** without a mutability trigger in the INPUT, the `$GLOBALS["literal"]` rewrite already succeeds via the existing path — because nothing has marked the global scope's variables mutable. The whole reason this gap exists in `bWNAdf.php` is that branching constructs (e.g. `if (!function_exists('str_ireplace')) { ... }`) cause `Resolver::setCurrentVarsMutable()` to flip every global's `ScalarValue` to mutable, which makes `Utils::getValue` throw `MutableValueException`. **Every fixture that's supposed to exercise the NEW path must include a mutability trigger.** A simple `if (true) { $dummy = 1; }` between the `$f = 'strrev';` assignment and the closure is sufficient and predictable.
 
 **Files:**
 - Create: `tests/globals.txt`
 
-- [ ] **Step 1: Create `tests/globals.txt` with the happy-path block.**
+- [ ] **Step 1: Create `tests/globals.txt` with the happy-path block (including mutability trigger).**
 
 Exact contents (no trailing newline matters — match how existing fixtures look):
 
 ```
 INPUT
 $f = 'strrev';
+if (true) {
+    $dummy = 1;
+}
 $g = function ($x) {
     return $GLOBALS['f']($x);
 };
 OUTPUT
 $f = 'strrev';
+if (true) {
+    $dummy = 1;
+}
 $g = function ($x) {
     return strrev($x);
 };
@@ -187,8 +195,10 @@ Inside `src/Reducer/FuncCallReducer.php`, just before the final closing `}` of t
     /**
      * Targeted fallback for the obfuscation pattern $GLOBALS["literal"](...).
      *
-     * Bypasses GlobalVarArray::checkMutable() which defeats the normal
-     * ResolveValueVisitor path on real-world samples. Only fires for the
+     * Bypasses the ValRef mutability check which defeats the normal
+     * ResolveValueVisitor path on real-world samples (any branching
+     * statement in the global scope flips Resolver::setCurrentVarsMutable
+     * and marks every top-level ScalarValue mutable). Only fires for the
      * exact shape $GLOBALS[<string literal>] and only returns a value
      * that looks like a valid PHP function identifier.
      *
@@ -217,7 +227,16 @@ Inside `src/Reducer/FuncCallReducer.php`, just before the final closing `}` of t
         if (!($valRef instanceof \PHPDeobfuscator\ValRef\ScalarValue)) {
             return null;
         }
-        $name = $valRef->getValue();
+        // Bypass the mutability check intentionally — that's the whole
+        // point of this fallback. Toggle isMutable off for the read and
+        // restore it after, so we don't perturb the rest of the pipeline.
+        $wasMutable = $valRef->isMutable();
+        $valRef->setMutable(false);
+        try {
+            $name = $valRef->getValue();
+        } finally {
+            $valRef->setMutable($wasMutable);
+        }
         if (!is_string($name)) {
             return null;
         }
@@ -240,7 +259,7 @@ Replace the existing body of `reduceFunctionCall` (currently around lines 26-39 
         } else {
             try {
                 $name = Utils::getValue($node->name);
-            } catch (\PHPDeobfuscator\Exceptions\UnknownValueException $e) {
+            } catch (\PHPDeobfuscator\Exceptions\BadValueException $e) {
                 $name = $this->resolveGlobalsLiteralName($node->name);
                 if ($name === null) {
                     return;
@@ -256,7 +275,7 @@ Replace the existing body of `reduceFunctionCall` (currently around lines 26-39 
     }
 ```
 
-Two things to notice vs. the original: (a) the `try`/`catch` is *narrow* — it catches only `UnknownValueException`, NOT its parent `BadValueException`, so `MutableValueException` continues to propagate up to `ReducerVisitor::leaveNode` exactly as before; (b) the `$nameNode = ...; $node->name = $nameNode;` block now runs after EITHER path produces `$name`.
+Two things to notice vs. the original: (a) the `try`/`catch` is for `BadValueException` (the parent of both `UnknownValueException` and `MutableValueException`) — covering both reasons `Utils::getValue` can fail, since the real-world failure is `MutableValueException` triggered by `setCurrentVarsMutable`; (b) the `$nameNode = ...; $node->name = $nameNode;` block now runs after EITHER path produces `$name`. The previous behaviour of `ReducerVisitor::leaveNode` swallowing leftover `BadValueException`s is preserved automatically: if our new path also returns `null`, we explicitly `return`, which is identical to the propagated-then-swallowed behaviour.
 
 - [ ] **Step 3: Run the failing fixture from Task 2 and confirm it now passes.**
 
@@ -286,7 +305,7 @@ git commit -m "Rewrite \$GLOBALS[literal](...) to named function call"
 
 ## Task 5: Add the error-suppress fixture
 
-Verifies that `@$GLOBALS["foo"](...)` keeps the `@` and that the rewrite doesn't accidentally unwrap the `ErrorSuppress`.
+Verifies that `@$GLOBALS["foo"](...)` keeps the `@` and that the rewrite doesn't accidentally unwrap the `ErrorSuppress`. Mutability trigger included so the new path actually runs (without it, the existing path handles this fine and we'd be testing the wrong code).
 
 **Files:**
 - Modify: `tests/globals.txt`
@@ -298,11 +317,17 @@ Append (with a blank line separating from the previous `OUTPUT` block):
 ```
 INPUT
 $f = 'strrev';
+if (true) {
+    $dummy = 1;
+}
 $g = function ($x) {
     return @$GLOBALS['f']($x);
 };
 OUTPUT
 $f = 'strrev';
+if (true) {
+    $dummy = 1;
+}
 $g = function ($x) {
     return @strrev($x);
 };
@@ -330,7 +355,7 @@ git commit -m "Test: \$GLOBALS rewrite preserves error-suppress wrapper"
 
 ## Task 6: Add the validation-rejection fixture
 
-Verifies the identifier regex prevents producing syntactically invalid PHP. The fixture must NOT be rewritten.
+Verifies the identifier regex prevents producing syntactically invalid PHP. The fixture must NOT be rewritten. Mutability trigger included so the new path actually fires and gets a chance to reject.
 
 **Files:**
 - Modify: `tests/globals.txt`
@@ -340,11 +365,17 @@ Verifies the identifier regex prevents producing syntactically invalid PHP. The 
 ```
 INPUT
 $f = 'echo 1;';
+if (true) {
+    $dummy = 1;
+}
 $g = function () {
     $GLOBALS['f']();
 };
 OUTPUT
 $f = 'echo 1;';
+if (true) {
+    $dummy = 1;
+}
 $g = function () {
     $GLOBALS['f']();
 };
@@ -408,54 +439,41 @@ git commit -m "Test: \$GLOBALS rewrite skips unknown global keys"
 
 ---
 
-## Task 8: Add the mutable-scope-poisoned fixture
+## Task 8: Add the simple-case regression-guard fixture
 
-This is the test that proves we're really bypassing the `checkMutable()` guard rather than just luckily hitting the existing path. It needs a construct that flips the global scope's mutability bit. The spec proposes a `function poison() { $GLOBALS['unrelated'] = something(); }` pattern, but the exact construct that actually triggers mutability may need empirical tuning.
+(Repurposed from the original spec's Test 3 since the canonical mutable-scope case is now T2.) The simple case — `$GLOBALS["literal"](...)` with NO mutability trigger — is handled by the EXISTING path today. We add it as a regression guard to make sure any future change to the new fallback doesn't accidentally break the existing path.
 
 **Files:**
 - Modify: `tests/globals.txt`
 
-- [ ] **Step 1: Append the candidate fifth block to `tests/globals.txt`.**
+- [ ] **Step 1: Append the fifth block to `tests/globals.txt`.**
 
 ```
 INPUT
 $f = 'strrev';
-function poison() {
-    $GLOBALS['unrelated'] = something();
-}
 $g = function ($x) {
     return $GLOBALS['f']($x);
 };
 OUTPUT
 $f = 'strrev';
-function poison()
-{
-    $GLOBALS['unrelated'] = something();
-}
 $g = function ($x) {
     return strrev($x);
 };
 ```
 
-(Note: the printer reformats `function poison() {` onto its own line with a newline before `{` for top-level function declarations. The closure form `function ($x) {` keeps the brace on the same line. Verify both match the printer's actual output.)
-
-- [ ] **Step 2: Run and check the result.**
+- [ ] **Step 2: Run and confirm it passes (this should pass *both* before and after the helper exists, since the existing path handles it).**
 
 ```bash
-cd /Users/fioa8c/WORK/PHPDeobfuscator
-php -d error_reporting=E_ALL test.php 2>&1 | grep -A30 'globals.txt/5'
+cd /Users/fioa8c/WORK/PHPDeobfuscator/.worktrees/globals-funccall-rename
+php -d error_reporting=E_ALL test.php 2>&1 | grep 'globals.txt/5'
 ```
 
-Two possible outcomes:
-
-  - **Pass:** Great — the chosen poison construct does trigger mutability AND the new path resolves it. Commit and continue.
-  - **Fail with whitespace mismatch:** Update the `OUTPUT` block to match the printer's actual output (preserving the rewrite of `$GLOBALS['f']($x)` → `strrev($x)`). Commit.
-  - **Fail because the `Got:` block still shows `$GLOBALS['f']($x)` unrewritten:** This would be a real bug — the new path didn't fire. Investigate by adding a quick `error_log()` inside `resolveGlobalsLiteralName` to confirm it's even being reached. Most likely cause: the chosen poison construct didn't actually flip mutability, so the existing path succeeded and the new path was bypassed — which means this fixture isn't actually exercising the new path. In that case, replace the `function poison() { ... }` block with a stronger construct (e.g. a top-level loop assigning `$GLOBALS[$key]` from a non-literal index) until mutability flips. Verify by temporarily replacing `$GLOBALS['f']($x)` in the closure with `$f($x)` — if the existing path is being defeated, both forms will fail to rewrite; that confirms mutability is poisoned. Then put `$GLOBALS['f']($x)` back, and the new path should now be the one rescuing it.
+Expected: `Test globals.txt/5 pass`. If it fails with whitespace mismatch, update the `OUTPUT` block to match the printer's actual output (preserving the `strrev($x)` rewrite).
 
 - [ ] **Step 3: Confirm the full suite still passes (no regressions across all five fixture files).**
 
 ```bash
-cd /Users/fioa8c/WORK/PHPDeobfuscator
+cd /Users/fioa8c/WORK/PHPDeobfuscator/.worktrees/globals-funccall-rename
 php -d error_reporting=E_ALL test.php 2>&1 | grep -c ' pass$'
 php -d error_reporting=E_ALL test.php 2>&1 | grep -c failed
 ```
@@ -466,7 +484,7 @@ Expected: pass count = baseline + 5 (one per new fixture). Failed count = 0.
 
 ```bash
 git add tests/globals.txt
-git commit -m "Test: \$GLOBALS rewrite works even when global scope is mutable"
+git commit -m "Test: regression guard for simple \$GLOBALS[literal] rewrite via existing path"
 ```
 
 ---
