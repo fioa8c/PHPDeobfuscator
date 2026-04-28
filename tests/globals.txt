@@ -33,3 +33,21 @@ if (true) {
 $g = function ($x) {
     return @strrev($x);
 };
+
+INPUT
+$f = 'echo 1;';
+if (true) {
+    $dummy = 1;
+}
+$g = function () {
+    $GLOBALS['f']();
+};
+
+OUTPUT
+$f = 'echo 1;';
+if (true) {
+    $dummy = 1;
+}
+$g = function () {
+    $GLOBALS['f']();
+};
