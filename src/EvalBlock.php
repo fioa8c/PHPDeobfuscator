@@ -10,6 +10,7 @@ use PhpParser\Node\Expr;
 class EvalBlock extends Expr
 {
     public $stmts;
+    public $origStmts;
 
     public function __construct(array $stmts, ?array $origStmts = null, array $attributes = array())
     {

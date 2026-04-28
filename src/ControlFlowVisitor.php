@@ -236,6 +236,12 @@ class ControlFlowVisitor extends \PhpParser\NodeVisitorAbstract
 
 class WrappedNode implements Node
 {
+    private Node $node;
+    private array $subNodes;
+    public $stmts;
+    public $elseifs;
+    public $else;
+
     public function __construct(Node $node, array $subNodes)
     {
         $this->node = $node;

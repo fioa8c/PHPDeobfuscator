@@ -9,6 +9,8 @@ use PHPDeobfuscator\VarRef;
 
 class ListVarRef implements VarRef
 {
+    private array $vars;
+
     public function __construct(array $vars)
     {
         $this->vars = $vars;

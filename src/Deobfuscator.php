@@ -16,6 +16,8 @@ class Deobfuscator
     private $fileSystem;
     private $filename;
 
+    private $metaVisitor;
+
     public function __construct($dumpOrig = false, $annotateReductions = false)
     {
         $this->parser = (new \PhpParser\ParserFactory())->create(\PhpParser\ParserFactory::PREFER_PHP7);
