@@ -14,3 +14,20 @@ if (true) {
 $g = function ($x) {
     return strrev($x);
 };
+
+INPUT
+$f = 'strrev';
+if (true) {
+    $dummy = 1;
+}
+$g = function ($x) {
+    return @$GLOBALS['f']($x);
+};
+OUTPUT
+$f = 'strrev';
+if (true) {
+    $dummy = 1;
+}
+$g = function ($x) {
+    return @strrev($x);
+};
