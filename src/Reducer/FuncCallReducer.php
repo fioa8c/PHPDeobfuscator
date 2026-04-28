@@ -35,7 +35,14 @@ class FuncCallReducer extends AbstractReducer
         if ($node->name instanceof Node\Name) {
             $name = $node->name->toString();
         } else {
-            $name = Utils::getValue($node->name);
+            try {
+                $name = Utils::getValue($node->name);
+            } catch (\PHPDeobfuscator\Exceptions\BadValueException $e) {
+                $name = $this->resolveGlobalsLiteralName($node->name);
+                if ($name === null) {
+                    return;
+                }
+            }
             $nameNode = new Node\Name($name);
             // Special case for MetadataVisitor
             $nameNode->setAttribute('replaces', $node->name);
@@ -59,6 +66,60 @@ class FuncCallReducer extends AbstractReducer
             $args[] = $valRef;
         }
         return $this->funcCallMap[$name]->execute($name, $args, $node);
+    }
+
+    /**
+     * Targeted fallback for the obfuscation pattern $GLOBALS["literal"](...).
+     *
+     * Bypasses the ValRef mutability check which defeats the normal
+     * ResolveValueVisitor path on real-world samples (any branching
+     * statement in the global scope flips Resolver::setCurrentVarsMutable
+     * and marks every top-level ScalarValue mutable). Only fires for the
+     * exact shape $GLOBALS[<string literal>] and only returns a value
+     * that looks like a valid PHP function identifier.
+     *
+     * Closure caveat: the lookup uses whatever value the Resolver had
+     * recorded by the time the closure literal was visited, not the value
+     * at PHP-runtime call time. Acceptable for deobfuscation readability;
+     * obfuscators don't reassign their function-name globals.
+     */
+    private function resolveGlobalsLiteralName(\PhpParser\Node $expr)
+    {
+        if (!($expr instanceof \PhpParser\Node\Expr\ArrayDimFetch)) {
+            return null;
+        }
+        $var = $expr->var;
+        if (!($var instanceof \PhpParser\Node\Expr\Variable)) {
+            return null;
+        }
+        if (!is_string($var->name) || $var->name !== 'GLOBALS') {
+            return null;
+        }
+        $dim = $expr->dim;
+        if (!($dim instanceof \PhpParser\Node\Scalar\String_)) {
+            return null;
+        }
+        $valRef = $this->resolver->getGlobalScope()->getVariable($dim->value);
+        if (!($valRef instanceof \PHPDeobfuscator\ValRef\ScalarValue)) {
+            return null;
+        }
+        // Bypass the mutability check intentionally — that's the whole
+        // point of this fallback. Toggle isMutable off for the read and
+        // restore it after, so we don't perturb the rest of the pipeline.
+        $wasMutable = $valRef->isMutable();
+        $valRef->setMutable(false);
+        try {
+            $name = $valRef->getValue();
+        } finally {
+            $valRef->setMutable($wasMutable);
+        }
+        if (!is_string($name)) {
+            return null;
+        }
+        if (!preg_match('/^\\\\?[A-Za-z_][A-Za-z0-9_]*(\\\\[A-Za-z_][A-Za-z0-9_]*)*$/', $name)) {
+            return null;
+        }
+        return $name;
     }
 
 }
