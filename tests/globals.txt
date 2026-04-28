@@ -51,3 +51,13 @@ if (true) {
 $g = function () {
     $GLOBALS['f']();
 };
+
+INPUT
+$g = function () {
+    $GLOBALS['never_assigned']();
+};
+
+OUTPUT
+$g = function () {
+    $GLOBALS['never_assigned']();
+};
