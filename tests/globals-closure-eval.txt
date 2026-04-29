@@ -77,3 +77,57 @@ function setup()
     };
 }
 $out = $GLOBALS['inner']('abc');
+
+INPUT
+$f = function (&$x) {
+    return $x;
+};
+$out = $GLOBALS['f']('y');
+
+OUTPUT
+$f = function (&$x) {
+    return $x;
+};
+$out = $GLOBALS['f']('y');
+
+INPUT
+$f = function ($x = 'default') {
+    return $x;
+};
+$out = $GLOBALS['f']('y');
+
+OUTPUT
+$f = function ($x = 'default') {
+    return $x;
+};
+$out = $GLOBALS['f']('y');
+
+INPUT
+$f = function (...$xs) {
+    return $xs;
+};
+$out = $GLOBALS['f']('a');
+
+OUTPUT
+$f = function (...$xs) {
+    return $xs;
+};
+$out = $GLOBALS['f']('a');
+
+INPUT
+$a = function ($x) {
+    return $GLOBALS['b']($x . 'a');
+};
+$b = function ($x) {
+    return $GLOBALS['a']($x . 'b');
+};
+$out = $GLOBALS['a']('start');
+
+OUTPUT
+$a = function ($x) {
+    return $GLOBALS['b']($x . 'a');
+};
+$b = function ($x) {
+    return $GLOBALS['a']($x . 'b');
+};
+$out = $GLOBALS['a']('start');
