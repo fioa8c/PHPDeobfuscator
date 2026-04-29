@@ -138,6 +138,30 @@ class SecurityAnalysisVisitor extends \PhpParser\NodeVisitorAbstract
             ));
             return;
         }
+        if ($node instanceof Expr\FuncCall && !($node->name instanceof Node\Name)) {
+            $this->findings->addSink(new Finding(
+                'sink', 'dispatch', '$variable()', $node->getLine(), $this->currentContext(), 'variable function'
+            ));
+            return;
+        }
+        if ($node instanceof Expr\MethodCall && !($node->name instanceof Node\Identifier)) {
+            $this->findings->addSink(new Finding(
+                'sink', 'dispatch', '$obj->$method()', $node->getLine(), $this->currentContext(), 'variable method'
+            ));
+            return;
+        }
+        if ($node instanceof Expr\StaticCall && !($node->name instanceof Node\Identifier)) {
+            $this->findings->addSink(new Finding(
+                'sink', 'dispatch', 'Class::$$method()', $node->getLine(), $this->currentContext(), 'variable static method'
+            ));
+            return;
+        }
+        if ($node instanceof Expr\New_ && !($node->class instanceof Node\Name)) {
+            $this->findings->addSink(new Finding(
+                'sink', 'dispatch', 'new $variable', $node->getLine(), $this->currentContext(), 'variable class'
+            ));
+            return;
+        }
         if ($node instanceof Expr\FuncCall && $node->name instanceof Node\Name) {
             $name = strtolower($node->name->toString());
             $category = DangerousCatalog::lookup($name);

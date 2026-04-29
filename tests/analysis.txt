@@ -197,3 +197,29 @@ sources:
 sinks:
   auto-exec  code_exec  line 4  preg_replace (e modifier)
   auto-exec  code_exec  line 5  preg_filter (non-literal pattern)
+
+INPUT
+$fn = $_GET['fn'];
+$fn('arg');
+$o->$method();
+$c::$$method();
+$cls = $_POST['cls'];
+new $cls();
+
+OUTPUT
+$fn = $_GET['fn'];
+$fn('arg');
+$o->{$method}();
+$c::${$method}();
+$cls = $_POST['cls'];
+new $cls();
+
+ANALYSIS
+sources:
+  auto-exec  line 3  $_GET['fn']
+  auto-exec  line 7  $_POST['cls']
+sinks:
+  auto-exec  dispatch  line 4  $variable() (variable function)
+  auto-exec  dispatch  line 5  $obj->$method() (variable method)
+  auto-exec  dispatch  line 6  Class::$$method() (variable static method)
+  auto-exec  dispatch  line 8  new $variable (variable class)
