@@ -5,6 +5,7 @@ namespace PHPDeobfuscator\Reducer;
 use PhpParser\Node;
 
 use PHPDeobfuscator\FunctionSandbox;
+use PHPDeobfuscator\Reducer\EvalReducer;
 use PHPDeobfuscator\Resolver;
 use PHPDeobfuscator\Utils;
 use PHPDeobfuscator\ValRef\ScalarValue;
@@ -13,10 +14,12 @@ class FuncCallReducer extends AbstractReducer
 {
     private $funcCallMap = array();
     private $resolver;
+    private $evalReducer;
 
-    public function __construct(Resolver $resolver)
+    public function __construct(Resolver $resolver, EvalReducer $evalReducer)
     {
         $this->resolver = $resolver;
+        $this->evalReducer = $evalReducer;
     }
 
     public function addReducer(FuncCallReducer\FunctionReducer $reducer)

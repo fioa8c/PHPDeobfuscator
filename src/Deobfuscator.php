@@ -39,7 +39,7 @@ class Deobfuscator
 
         $evalReducer = new Reducer\EvalReducer($this);
 
-        $funcCallReducer = new Reducer\FuncCallReducer($resolver);
+        $funcCallReducer = new Reducer\FuncCallReducer($resolver, $evalReducer);
         $funcCallReducer->addReducer(new Reducer\FuncCallReducer\FunctionSandbox());
         $funcCallReducer->addReducer(new Reducer\FuncCallReducer\FileSystemCall($this->fileSystem));
         $funcCallReducer->addReducer(new Reducer\FuncCallReducer\MiscFunctions($evalReducer, $resolver));
