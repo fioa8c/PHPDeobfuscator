@@ -60,3 +60,20 @@ $f = function ($s) use($prefix) {
     return $prefix . $s;
 };
 $out = $GLOBALS['f']('x');
+
+INPUT
+function setup() {
+    $GLOBALS['inner'] = function ($s) {
+        return strrev($s);
+    };
+}
+$out = $GLOBALS['inner']('abc');
+
+OUTPUT
+function setup()
+{
+    $GLOBALS['inner'] = function ($s) {
+        return strrev($s);
+    };
+}
+$out = $GLOBALS['inner']('abc');
