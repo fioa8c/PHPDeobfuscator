@@ -294,6 +294,9 @@ class Resolver extends \PhpParser\NodeVisitorAbstract
             if ($param->default !== null) {
                 return;
             }
+            if ($param->variadic) {
+                return;
+            }
         }
 
         $lhs = $expr->var;

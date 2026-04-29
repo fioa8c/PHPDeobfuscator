@@ -111,6 +111,11 @@ class FuncCallReducer extends AbstractReducer
         if (count($closure->params) !== count($node->args)) {
             return null;
         }
+        foreach ($node->args as $arg) {
+            if ($arg->unpack || $arg->byRef) {
+                return null;
+            }
+        }
 
         try {
             $printer = new \PHPDeobfuscator\ExtendedPrettyPrinter();
