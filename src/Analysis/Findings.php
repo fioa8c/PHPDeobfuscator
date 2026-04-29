@@ -54,11 +54,13 @@ class Findings
         return $names;
     }
 
+    /** @return Finding[] */
     public function sortedSources(): array
     {
         return $this->sortByContextThenLine($this->sources);
     }
 
+    /** @return Finding[] */
     public function sortedSinks(): array
     {
         return $this->sortByContextThenLine($this->sinks);
