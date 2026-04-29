@@ -15,12 +15,20 @@ It is implemented in PHP with the help of [PHP-Parser](https://github.com/nikic/
 - Filesystem virtualization
 - Variable resolver (e.g. `$var1 = 10; $var2 = &$var1; $var2 = 20;` can determine `$var1` equals `20`)
 - Rewrite control flow obfuscation
+- Rewrite `$GLOBALS["..."]` calls — resolves obfuscated function dispatch through global string variables and through closure literals, including symbolic evaluation of the closure body when arguments are constant
 
 ## Installation
 
-PHP Deobfuscator uses [Composer](https://getcomposer.org/) to manage its dependencies. Make sure Composer is installed first.
+Requires PHP 8.0+. PHP Deobfuscator uses [Composer](https://getcomposer.org/) to manage its dependencies. Make sure Composer is installed first.
 
 Run `composer install` in the root of this project to fetch dependencies.
+
+A `Dockerfile` (pinning `php:8.5-cli-bookworm`) is also included. To build and run the deobfuscator inside a container:
+
+```
+docker build -t phpdeobf .
+docker run --rm phpdeobf
+```
 
 ## Usage
 
@@ -112,6 +120,25 @@ echo 20;
 #### Input
 ```php
 <?php
+$decode = function ($x) {
+    return strrev($x);
+};
+$out = $GLOBALS['decode']('hello');
+```
+
+#### Output
+```php
+<?php
+
+$decode = function ($x) {
+    return strrev($x);
+};
+$out = "olleh";
+```
+
+#### Input
+```php
+<?php
 goto label4;
 label1:
 func4();
@@ -137,3 +164,13 @@ func3();
 func4();
 exit;
 ```
+
+## Tests
+
+Run the test suite from the repository root:
+
+```
+php test.php
+```
+
+The runner discovers every `tests/*.txt` fixture file and prints `pass`/`failed` per `INPUT`/`OUTPUT` block.
