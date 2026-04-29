@@ -22,7 +22,7 @@ $D_O_OLLLO_ = function ($strv) {
 $DLLO_LO_O_ = $GLOBALS["D_O_OLLLO_"]('09PXyhTyhJTE5OLS4tPGAA==');
 ```
 
-The decoder reduces a literal-arg call to a constant string (in this case `'./.htaccess'`). The body uses only functions our pipeline already folds (`substr`, `strlen`, `base64_decode`, `gzinflate`), so the call should be statically reducible.
+The decoder reduces a literal-arg call to a constant string (in this case `'./.htaccess'`). The body uses functions our pipeline can fold — `substr`, `base64_decode`, `gzinflate` are already in `PassThrough` — and `strlen`, which is **not** currently registered. Adding `strlen` to `PassThrough` is a one-line prerequisite for this feature (verified: with `strlen` registered, the body folds end-to-end to `return "./.htaccess";`).
 
 The pipeline does not currently track closures as values: `Resolver::onAssign` of `$x = function(){...}` records nothing about the RHS, and `ResolveValueVisitor` does not attach a `VALUE` attribute to `Expr\Closure` nodes. Consequently, the existing globals fallback (`FuncCallReducer::resolveGlobalsLiteralName`) cannot help — there is no string-valued function name to rewrite to, and there is no value-side mechanism to invoke the closure symbolically.
 
@@ -94,11 +94,24 @@ Closure evaluation is tried **before** the string-name fallback. The two are mut
 1. Recognise shape — same predicate as `resolveGlobalsLiteralName`: `$node->name` must be `ArrayDimFetch(var=Variable("GLOBALS"), dim=String_(<key>))`. Otherwise return null.
 2. Look up the closure: `$closure = $this->resolver->getGlobalClosure($key)`. If null, return null.
 3. Arity check: `count($closure->params) === count($node->args)`. Otherwise return null. (Default-valued params are already excluded at registration time, so this check is a strict equality.)
-4. Build a synthetic mini-program as a string by pretty-printing each `$paramName = <argExpression>;` in order, then appending the closure body's statements pretty-printed. The strategy mirrors `MiscFunctions::createFunction`, which already builds source text and feeds it back to the parser.
+4. Build a synthetic mini-program as a string. The body is wrapped in a **synthetic parameter-less closure literal** for scope isolation:
+
+   ```
+   function () {
+       $param1 = <argExpression1>;
+       $param2 = <argExpression2>;
+       ...
+       <pretty-printed closure body statements>
+   };
+   ```
+
+   The wrapper is required because `EvalReducer::runEvalTree` reuses the outer `Resolver` (and thus its scope stack); without the wrapper, the synthetic body's locals (e.g., the `$strv` parameter binding, all intermediate `$a`/`$b`/`$c` locals) would land in whatever scope the original call site was in and pollute it. The `Resolver` enters a fresh closure scope on the synthetic literal and exits cleanly when its traversal ends. The strategy mirrors `MiscFunctions::createFunction`, which already wraps generated bodies in `(function(...){...})` for the same reason.
+
 5. Run the synthetic program through `$this->evalReducer->runEvalTree($source)`. Wrap in `try { ... } catch (\Throwable $e) { return null; }`.
 6. Inspect the resulting statement list:
-   - If the last statement is `Stmt\Return_`, attempt `Utils::getValue($return->expr)`. If it returns a scalar, wrap it via `Utils::scalarToNode(...)` and return that node.
-   - On any other shape (no return, return without a resolvable value, multiple non-fold statements), return null.
+   - It should be a single `Stmt\Expression` whose `expr` is `Expr\Closure`. On any other shape, return null.
+   - Take that closure's `stmts`. If the last statement is `Stmt\Return_` with a non-null `expr`, attempt `Utils::getValue($return->expr)`. If it returns a scalar, wrap it via `Utils::scalarToNode(...)` and return that node.
+   - On any other shape (no return, return without a resolvable value, `BadValueException` on the value lookup), return null.
 
 The returned node fully replaces the original `FuncCall` in the AST.
 
@@ -150,16 +163,19 @@ $DLLO_LO_O_ = $GLOBALS["D_O_OLLLO_"]('09PXyhTyhJTE5OLS4tPGAA==');
    - Shape matches.
    - Registry hit: `$closure` for key `"D_O_OLLLO_"`.
    - Arity 1 == 1. ✓
-   - Synthetic source:
+   - Synthetic source (closure-literal wrapper for scope isolation):
      ```php
-     $strv = '09PXyhTyhJTE5OLS4tPGAA==';
-     $DLO_OOLL__ = substr($strv, 0, 5);
-     $DLL__O_OOL = substr($strv, -5);
-     $DOOO_LL_L_ = substr($strv, 7, strlen($strv) - 14);
-     return gzinflate(base64_decode($DLO_OOLL__ . $DOOO_LL_L_ . $DLL__O_OOL));
+     function () {
+         $strv = '09PXyhTyhJTE5OLS4tPGAA==';
+         $DLO_OOLL__ = substr($strv, 0, 5);
+         $DLL__O_OOL = substr($strv, -5);
+         $DOOO_LL_L_ = substr($strv, 7, strlen($strv) - 14);
+         return gzinflate(base64_decode($DLO_OOLL__ . $DOOO_LL_L_ . $DLL__O_OOL));
+     };
      ```
-   - `runEvalTree` parses and runs full deobfuscation. `substr`, `strlen`, `base64_decode`, `gzinflate` are all in `FunctionSandbox`; concat and the return fold to `'./.htaccess'`.
-   - Last stmt is `Return_` with a scalar `VALUE` of `'./.htaccess'`.
+   - `runEvalTree` parses and runs full deobfuscation. `substr`, `strlen`, `base64_decode`, `gzinflate` are all in `PassThrough`; concat and the return fold inside the synthetic closure's body to `return "./.htaccess";`.
+   - Result tree is `Stmt\Expression(Expr\Closure(stmts=[..., Stmt\Return_(scalar)]))`.
+   - Last body stmt is `Return_` with a scalar `VALUE` of `'./.htaccess'`.
    - Returns `Utils::scalarToNode('./.htaccess')`.
 4. `reduceFunctionCall` returns the scalar string node, which `ReducerVisitor` substitutes for the entire `FuncCall`.
 
