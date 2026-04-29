@@ -181,3 +181,11 @@ $c = function ($x) {
     return strrev($x);
 };
 $out = $GLOBALS['b']();
+
+INPUT
+$x = 'outer';
+$f = fn($x) => $x . 'suffix';
+
+OUTPUT
+$x = 'outer';
+$f = fn($x) => $x . 'suffix';
