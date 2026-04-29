@@ -223,3 +223,19 @@ sinks:
   auto-exec  dispatch  line 5  $obj->$method() (variable method)
   auto-exec  dispatch  line 6  Class::$$method() (variable static method)
   auto-exec  dispatch  line 8  new $variable (variable class)
+
+INPUT
+$body = file_get_contents('php://input');
+$h = fopen('php://stdin', 'r');
+$other = file_get_contents('config.json');
+
+OUTPUT
+$body = file_get_contents('php://input');
+$h = fopen('php://stdin', 'r');
+$other = file_get_contents('config.json');
+
+ANALYSIS
+sources:
+  auto-exec  line 3  file_get_contents('php://input')
+  auto-exec  line 4  fopen('php://stdin')
+sinks:

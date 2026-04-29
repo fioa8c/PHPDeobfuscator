@@ -92,6 +92,26 @@ class SecurityAnalysisVisitor extends \PhpParser\NodeVisitorAbstract
                 ));
             }
         }
+
+        if ($node instanceof Expr\FuncCall && $node->name instanceof Node\Name) {
+            $name = strtolower($node->name->toString());
+            if (in_array($name, ['file_get_contents', 'fopen', 'stream_get_contents'], true)) {
+                $first = $node->args[0]->value ?? null;
+                if ($first instanceof Node\Scalar\String_) {
+                    $val = $first->value;
+                    if (strpos($val, 'php://input') === 0 || strpos($val, 'php://stdin') === 0) {
+                        $stream = (strpos($val, 'php://input') === 0) ? 'php://input' : 'php://stdin';
+                        $this->findings->addSource(new Finding(
+                            'source',
+                            'pseudo_stream',
+                            $name . "('" . $stream . "')",
+                            $node->getLine(),
+                            $this->currentContext()
+                        ));
+                    }
+                }
+            }
+        }
     }
 
     private function detectSink(Node $node): void
