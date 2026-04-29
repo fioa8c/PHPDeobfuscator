@@ -114,38 +114,46 @@ To exercise the fix observably, the fixture below uses `$GLOBALS['b']` from outs
 
 ## Testing
 
-One new fixture appended to `tests/globals-closure-eval.txt`. Two test cases would each lock in one half of the scope semantics:
+Two new fixtures appended to `tests/globals-closure-eval.txt`. Each fixture isolates one of the two `changesScope` predicates — fixture A is sensitive only to the `ClosureRegistryPrepass` change; fixture B is sensitive only to the `Resolver` change.
 
-1. **Inner closure assignment inside an arrow function body is not globally registered.**
+**Fixture A — Inner closure assignment inside an arrow function body is not globally registered (prepass change):**
 
-   ```
-   INPUT
-   $a = fn() => $b = function () {
-       return $GLOBALS['c']('hello');
-   };
-   $c = function ($x) {
-       return strrev($x);
-   };
-   $out = $GLOBALS['b']();
+```
+INPUT
+$a = fn() => $b = function () {
+    return $GLOBALS['c']('hello');
+};
+$c = function ($x) {
+    return strrev($x);
+};
+$out = $GLOBALS['b']();
 
-   OUTPUT
-   $a = fn() => $b = function () {
-       return "olleh";
-   };
-   $c = function ($x) {
-       return strrev($x);
-   };
-   $out = $GLOBALS['b']();
-   ```
+OUTPUT
+$a = fn() => $b = function () {
+    return "olleh";
+};
+$c = function ($x) {
+    return strrev($x);
+};
+$out = $GLOBALS['b']();
+```
 
-   Verified on master: this same input produces `$out = "olleh";` today (the prepass incorrectly registers `$b` as a global because the arrow function is treated as scope-transparent, so `$out = $GLOBALS['b']()` from outside the arrow function evaluates the inner closure via the registry hit). After this change, `$b` is not registered, the outer call cannot fold, and the OUTPUT matches what is shown above.
+Verified on master: this same input produces `$out = "olleh";` today (the prepass incorrectly registers `$b` as a global because the arrow function is treated as scope-transparent, so `$out = $GLOBALS['b']()` from outside the arrow function evaluates the inner closure via the registry hit). After the prepass change, `$b` is not registered, the outer call cannot fold, and the OUTPUT matches above. The closure body inside `$b` still folds (`$GLOBALS['c']('hello')` → `"olleh"`) because `$c` IS registered — this is unrelated to the scope fix and confirms the rest of the pipeline still works.
 
-   `$out = $GLOBALS['b']();` from the global scope **should not fold** after this change — `$b` is no longer registered as a global closure (it lives only inside `$a`'s arrow function body). On master, this same input would erroneously fold `$out` to `"olleh"`. The fixture catches the bug fix.
+**Fixture B — Arrow function param shadowing does not leak from arrow function scope (Resolver change):**
 
-   The closure body inside `$b` still folds (`$GLOBALS['c']('hello')` → `"olleh"`) because `$c` IS registered. This is unrelated to the scope fix; it confirms the rest of the pipeline still works.
+```
+INPUT
+$x = 'outer';
+$f = fn($x) => $x . 'suffix';
 
-   Note: the AOT pretty-printer may render `fn() => $b = function () {...}` slightly differently than the input. The OUTPUT in the fixture must match what `ExtendedPrettyPrinter::prettyPrintFile` actually emits; verify during implementation.
+OUTPUT
+$x = 'outer';
+$f = fn($x) => $x . 'suffix';
+```
 
-That single fixture is enough — it exercises both `Resolver::changesScope` (the fact that `$b` doesn't leak as a global) and `ClosureRegistryPrepass::changesScope` (the prepass doesn't register `$b`). Pre-existing fixtures (cases 1–11 in `tests/globals-closure-eval.txt`) confirm no regression for non-arrow-function paths.
+Verified on master: this same input produces `$f = fn($x) => "outersuffix";` today (the Resolver treats the arrow function as scope-transparent, so the body's `$x` resolves to the outer `'outer'` and the concat folds to `"outersuffix"` — incorrect, since the param `$x` shadows the outer in real PHP). After the Resolver change, the body's `$x` is unknown inside a fresh arrow function scope, the concat does not fold, and the OUTPUT matches above. This fixture also confirms the documented "auto-capture loss" trade-off: outer scalar values are no longer visible inside arrow function bodies. The output is strictly less reduced, never incorrect.
 
-**Smoke check:** none — the obfuscator samples don't use arrow functions. Re-run `php index.php -f samples/next_DOLOLO.php` and confirm the `$GLOBALS["` count is unchanged from the post-PR-#2 baseline (15).
+**Pre-existing fixtures (cases 1–11) confirm no regression for non-arrow-function paths.**
+
+**Smoke check:** Re-run `php index.php -f samples/next_DOLOLO.php` and confirm the `$GLOBALS["` count is unchanged from the post-PR-#2 baseline (15) — obfuscator samples don't use arrow functions, so this change should be invisible there.
