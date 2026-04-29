@@ -1,0 +1,17 @@
+INPUT
+$decode = function ($strv) {
+    $a = substr($strv, 0, 5);
+    $b = substr($strv, -5);
+    $c = substr($strv, 7, strlen($strv) - 14);
+    return gzinflate(base64_decode($a . $c . $b));
+};
+$out = $GLOBALS['decode']('09PXyhTyhJTE5OLS4tPGAA==');
+
+OUTPUT
+$decode = function ($strv) {
+    $a = substr($strv, 0, 5);
+    $b = substr($strv, -5);
+    $c = substr($strv, 7, strlen($strv) - 14);
+    return gzinflate(base64_decode($a . $c . $b));
+};
+$out = './.htaccess';
