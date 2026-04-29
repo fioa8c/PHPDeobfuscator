@@ -1,0 +1,133 @@
+INPUT
+$decode = function ($strv) {
+    $a = substr($strv, 0, 5);
+    $b = substr($strv, -5);
+    $c = substr($strv, 7, strlen($strv) - 14);
+    return gzinflate(base64_decode($a . $c . $b));
+};
+$out = $GLOBALS['decode']('09PXyhTyhJTE5OLS4tPGAA==');
+
+OUTPUT
+$decode = function ($strv) {
+    $a = substr($strv, 0, 5);
+    $b = substr($strv, -5);
+    $c = substr($strv, 7, strlen($strv) - 14);
+    return gzinflate(base64_decode($a . $c . $b));
+};
+$out = "./.htaccess";
+
+INPUT
+$decode = function ($s) {
+    return base64_decode($s);
+};
+function poison() {
+    $GLOBALS['unrelated'] = something();
+}
+$out = $GLOBALS['decode']('aGVsbG8=');
+
+OUTPUT
+$decode = function ($s) {
+    return base64_decode($s);
+};
+function poison()
+{
+    $GLOBALS['unrelated'] = something();
+}
+$out = "hello";
+
+INPUT
+$f = function ($s) {
+    return getenv($s) . 'x';
+};
+$out = $GLOBALS['f']('PATH');
+
+OUTPUT
+$f = function ($s) {
+    return getenv($s) . 'x';
+};
+$out = $GLOBALS['f']('PATH');
+
+INPUT
+$prefix = 'p_';
+$f = function ($s) use ($prefix) {
+    return $prefix . $s;
+};
+$out = $GLOBALS['f']('x');
+
+OUTPUT
+$prefix = 'p_';
+$f = function ($s) use($prefix) {
+    return $prefix . $s;
+};
+$out = $GLOBALS['f']('x');
+
+INPUT
+function setup() {
+    $GLOBALS['inner'] = function ($s) {
+        return strrev($s);
+    };
+}
+$out = $GLOBALS['inner']('abc');
+
+OUTPUT
+function setup()
+{
+    $GLOBALS['inner'] = function ($s) {
+        return strrev($s);
+    };
+}
+$out = $GLOBALS['inner']('abc');
+
+INPUT
+$f = function (&$x) {
+    return $x;
+};
+$out = $GLOBALS['f']('y');
+
+OUTPUT
+$f = function (&$x) {
+    return $x;
+};
+$out = $GLOBALS['f']('y');
+
+INPUT
+$f = function ($x = 'default') {
+    return $x;
+};
+$out = $GLOBALS['f']('y');
+
+OUTPUT
+$f = function ($x = 'default') {
+    return $x;
+};
+$out = $GLOBALS['f']('y');
+
+INPUT
+$f = function (...$xs) {
+    return $xs;
+};
+$out = $GLOBALS['f']('a');
+
+OUTPUT
+$f = function (...$xs) {
+    return $xs;
+};
+$out = $GLOBALS['f']('a');
+
+INPUT
+$a = function ($x) {
+    return $GLOBALS['b']($x . 'a');
+};
+$b = function ($x) {
+    return $GLOBALS['a']($x . 'b');
+};
+$out = $GLOBALS['a']('start');
+
+OUTPUT
+$a = function ($x) {
+    return $GLOBALS['b']($x . 'a');
+};
+$b = function ($x) {
+    return $GLOBALS['a']($x . 'b');
+};
+$out = $GLOBALS['a']('start');

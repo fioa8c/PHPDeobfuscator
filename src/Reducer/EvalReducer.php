@@ -14,6 +14,8 @@ class EvalReducer extends AbstractReducer
 {
     private $deobfuscator;
     private $outputAsEvalStr;
+    private int $depth = 0;
+    private const MAX_DEPTH = 8;
 
     public function __construct(Deobfuscator $deobfuscator, $outputAsEvalStr = false)
     {
@@ -60,25 +62,33 @@ class EvalReducer extends AbstractReducer
 
     public function runEval($code)
     {
-        $origTree = $this->parseCode($code);
-        $tree = $this->deobfTree($origTree);
-        // If it's just a single expression, return directly
-        // XXX this is not semantically correct because eval does not return
-        // anything by default
-        if (count($tree) === 1 && $tree[0] instanceof Stmt\Expression) {
-            return $tree[0]->expr;
+        if ($this->depth >= self::MAX_DEPTH) {
+            return null;
         }
-        if (count($tree) === 1 && $tree[0] instanceof Stmt\Return_) {
-            return $tree[0]->expr;
+        $this->depth++;
+        try {
+            $origTree = $this->parseCode($code);
+            $tree = $this->deobfTree($origTree);
+            // If it's just a single expression, return directly
+            // XXX this is not semantically correct because eval does not return
+            // anything by default
+            if (count($tree) === 1 && $tree[0] instanceof Stmt\Expression) {
+                return $tree[0]->expr;
+            }
+            if (count($tree) === 1 && $tree[0] instanceof Stmt\Return_) {
+                return $tree[0]->expr;
+            }
+            if ($this->outputAsEvalStr) {
+                $expr = new Expr\Eval_(new String_($this->deobfuscator->prettyPrint($tree, false), array(
+                    'kind' => String_::KIND_NOWDOC, 'docLabel' => 'EVAL' . rand()
+                ))) ;
+            } else {
+                $expr = new EvalBlock($tree, $origTree);
+            }
+            return $expr;
+        } finally {
+            $this->depth--;
         }
-        if ($this->outputAsEvalStr) {
-            $expr = new Expr\Eval_(new String_($this->deobfuscator->prettyPrint($tree, false), array(
-                'kind' => String_::KIND_NOWDOC, 'docLabel' => 'EVAL' . rand()
-            ))) ;
-        } else {
-            $expr = new EvalBlock($tree, $origTree);
-        }
-        return $expr;
     }
 
     private function parseCode($code)
@@ -99,7 +109,15 @@ class EvalReducer extends AbstractReducer
 
     public function runEvalTree($code)
     {
-        return $this->deobfTree($this->parseCode($code));
+        if ($this->depth >= self::MAX_DEPTH) {
+            return [];
+        }
+        $this->depth++;
+        try {
+            return $this->deobfTree($this->parseCode($code));
+        } finally {
+            $this->depth--;
+        }
     }
 
 }
