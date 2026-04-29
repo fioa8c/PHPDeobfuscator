@@ -19,7 +19,7 @@ while ($testfile = readdir($d)) {
         exit(1);
     }
     $tests = array();
-    $curTest = array('input' => array(), 'output' => array(), 'analysis' => null);
+    $curTest = array('input' => array(), 'output' => array(), 'analysis' => null, 'analysis_text' => null);
     $lines = null;
     while (!feof($f)) {
         $line = fgets($f);
@@ -27,7 +27,7 @@ while ($testfile = readdir($d)) {
         if ($trim === 'INPUT') {
             if ($lines !== null) {
                 $tests[] = $curTest;
-                $curTest = array('input' => array(), 'output' => array(), 'analysis' => null);
+                $curTest = array('input' => array(), 'output' => array(), 'analysis' => null, 'analysis_text' => null);
             }
             $lines = &$curTest['input'];
             continue;
@@ -37,6 +37,10 @@ while ($testfile = readdir($d)) {
         } elseif ($trim === 'ANALYSIS') {
             $curTest['analysis'] = array();
             $lines = &$curTest['analysis'];
+            continue;
+        } elseif ($trim === 'ANALYSIS-TEXT') {
+            $curTest['analysis_text'] = array();
+            $lines = &$curTest['analysis_text'];
             continue;
         }
         if ($lines !== null) {
@@ -91,7 +95,26 @@ while ($testfile = readdir($d)) {
             echo implode("\n", array_map(function($l) { return "[]: $l"; }, explode("\n", $analysisGot)));
             echo "\n";
         }
-        if ($deobfPass && $analysisPass) {
+        $analysisTextPass = true;
+        $analysisTextExpected = null;
+        $analysisTextGot = null;
+        if (isset($test['analysis_text']) && $test['analysis_text'] !== null) {
+            $analysisTextExpected = trim(implode('', $test['analysis_text']));
+            $findings = $deobf->analyze($out);
+            $formatter = new \PHPDeobfuscator\Analysis\ReportFormatter();
+            $analysisTextGot = trim($formatter->formatText($findings));
+            $analysisTextPass = ($analysisTextGot === $analysisTextExpected);
+        }
+        if (!$analysisTextPass) {
+            echo "Test $name failed (analysis-text):\n";
+            echo "Expected:\n";
+            echo implode("\n", array_map(function($l) { return "[]: $l"; }, explode("\n", $analysisTextExpected)));
+            echo "\n";
+            echo "Got:\n";
+            echo implode("\n", array_map(function($l) { return "[]: $l"; }, explode("\n", $analysisTextGot)));
+            echo "\n";
+        }
+        if ($deobfPass && $analysisPass && $analysisTextPass) {
             echo "Test $name pass\n";
         }
     }

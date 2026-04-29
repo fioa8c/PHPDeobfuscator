@@ -239,3 +239,31 @@ sources:
   auto-exec  line 3  file_get_contents('php://input')
   auto-exec  line 4  fopen('php://stdin')
 sinks:
+
+INPUT
+$x = $_GET['c'];
+eval($x);
+function helper() {
+    unserialize($_POST['p']);
+}
+
+OUTPUT
+$x = $_GET['c'];
+eval($x);
+function helper()
+{
+    unserialize($_POST['p']);
+}
+
+ANALYSIS-TEXT
+===== Analysis =====
+
+Sources (2):
+  [auto-exec]           line 3   $_GET['c']
+  [in-function:helper]  line 7   $_POST['p']
+
+Sinks (2):
+  [auto-exec]           code_exec  line 4   eval
+  [in-function:helper]  deser      line 7   unserialize
+
+Summary: 2 sources, 2 sinks (2 auto-exec out of 4 total findings). Categories present: code_exec, deser.
