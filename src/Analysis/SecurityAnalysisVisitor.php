@@ -115,6 +115,27 @@ class SecurityAnalysisVisitor extends \PhpParser\NodeVisitorAbstract
             ));
             return;
         }
+        if ($node instanceof Expr\Include_) {
+            if ($node->expr instanceof Node\Scalar\String_) {
+                return; // static include — uninteresting
+            }
+            static $kindLabels = [
+                Expr\Include_::TYPE_INCLUDE      => 'include',
+                Expr\Include_::TYPE_INCLUDE_ONCE => 'include_once',
+                Expr\Include_::TYPE_REQUIRE      => 'require',
+                Expr\Include_::TYPE_REQUIRE_ONCE => 'require_once',
+            ];
+            $label = $kindLabels[$node->type] ?? 'include';
+            $this->findings->addSink(new Finding(
+                'sink',
+                'dynamic_inc',
+                $label,
+                $node->getLine(),
+                $this->currentContext(),
+                'non-literal arg'
+            ));
+            return;
+        }
         if ($node instanceof Expr\FuncCall && $node->name instanceof Node\Name) {
             $name = $node->name->toString();
             $category = DangerousCatalog::lookup($name);

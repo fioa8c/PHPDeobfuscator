@@ -143,3 +143,24 @@ sources:
 sinks:
   auto-exec  code_exec  line 4  eval
   auto-exec  os_exec  line 5  shell_exec (backticks)
+
+INPUT
+$f = $_GET['f'];
+include $f;
+require_once $f . '.php';
+include 'config.php';
+require 'lib/setup.php';
+
+OUTPUT
+$f = $_GET['f'];
+include $f;
+require_once $f . '.php';
+include 'config.php';
+require 'lib/setup.php';
+
+ANALYSIS
+sources:
+  auto-exec  line 3  $_GET['f']
+sinks:
+  auto-exec  dynamic_inc  line 4  include (non-literal arg)
+  auto-exec  dynamic_inc  line 5  require_once (non-literal arg)
