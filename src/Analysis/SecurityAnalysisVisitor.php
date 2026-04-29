@@ -8,6 +8,8 @@ use PhpParser\Node\Stmt;
 
 class SecurityAnalysisVisitor extends \PhpParser\NodeVisitorAbstract
 {
+    private const SKIP = "\0SKIP";
+
     private Findings $findings;
 
     /** Stack of function-like frame names (empty => auto-exec context). */
@@ -137,18 +139,35 @@ class SecurityAnalysisVisitor extends \PhpParser\NodeVisitorAbstract
             return;
         }
         if ($node instanceof Expr\FuncCall && $node->name instanceof Node\Name) {
-            $name = $node->name->toString();
+            $name = strtolower($node->name->toString());
             $category = DangerousCatalog::lookup($name);
             if ($category !== null) {
+                $note = $this->predicateNote($name, $node);
+                if ($note === self::SKIP) {
+                    return;
+                }
                 $this->findings->addSink(new Finding(
                     'sink',
                     $category,
-                    strtolower($name),
+                    $name,
                     $node->getLine(),
-                    $this->currentContext()
+                    $this->currentContext(),
+                    $note
                 ));
             }
         }
+    }
+
+    /** Returns null (flag, no note), self::SKIP (don't flag), or a string (flag with note). */
+    private function predicateNote(string $name, Expr\FuncCall $node): ?string
+    {
+        $args = $node->args;
+        if ($name === 'header') {
+            $first = $args[0]->value ?? null;
+            if ($first instanceof Node\Scalar\String_) return self::SKIP;
+            return 'non-literal arg';
+        }
+        return null;
     }
 
     private function labelForVariable(Expr\Variable $node): string

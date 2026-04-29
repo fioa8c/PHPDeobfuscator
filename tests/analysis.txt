@@ -164,3 +164,17 @@ sources:
 sinks:
   auto-exec  dynamic_inc  line 4  include (non-literal arg)
   auto-exec  dynamic_inc  line 5  require_once (non-literal arg)
+
+INPUT
+header('Content-Type: text/html');
+header('Location: ' . $_GET['url']);
+
+OUTPUT
+header('Content-Type: text/html');
+header('Location: ' . $_GET['url']);
+
+ANALYSIS
+sources:
+  auto-exec  line 4  $_GET['url']
+sinks:
+  auto-exec  header_inj  line 4  header (non-literal arg)
