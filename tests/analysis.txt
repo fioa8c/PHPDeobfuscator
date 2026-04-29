@@ -40,3 +40,53 @@ sources:
   auto-exec  line 9  $_ENV['HOME']
   auto-exec  line 10  $GLOBALS['shared']
 sinks:
+
+INPUT
+namespace App\Web;
+
+class Handler {
+    public function handle() {
+        $a = $_POST['data'];
+    }
+}
+
+function helper() {
+    $b = $_GET['q'];
+}
+
+$top = $_REQUEST['t'];
+
+$cb = function () {
+    $c = $_COOKIE['cid'];
+};
+
+$arr = fn() => $_SERVER['HTTP_HOST'];
+
+OUTPUT
+namespace App\Web;
+
+class Handler
+{
+    public function handle()
+    {
+        $a = $_POST['data'];
+    }
+}
+function helper()
+{
+    $b = $_GET['q'];
+}
+$top = $_REQUEST['t'];
+$cb = function () {
+    $c = $_COOKIE['cid'];
+};
+$arr = fn() => $_SERVER['HTTP_HOST'];
+
+ANALYSIS
+sources:
+  auto-exec  line 16  $_REQUEST['t']
+  in-function:App\Web\Handler::handle  line 9  $_POST['data']
+  in-function:App\Web\helper  line 14  $_GET['q']
+  in-function:{closure@line:17}  line 18  $_COOKIE['cid']
+  in-function:{fn@line:20}  line 20  $_SERVER['HTTP_HOST']
+sinks:
