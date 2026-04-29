@@ -43,8 +43,8 @@ One new visitor + one report formatter, behind a CLI flag. No changes to the exi
 
 ### Wiring
 
-- **`Deobfuscator::analyze(array $tree): Findings`** — new method. Runs `SecurityAnalysisVisitor` over the (already-deobfuscated) tree via a fresh `NodeTraverser`, returns the `Findings`. Does **not** mutate the tree. Doesn't run unless the caller asks.
-- **`index.php`** — extend `getopt('tof:')` to `getopt('tof:aj')`. After `prettyPrint()`, when `-a` and/or `-j` is set, call `Deobfuscator::analyze()` on the deobfuscated tree and append the formatted report(s) to stdout. The `-aj` combination prints text first, then a `===== Analysis (JSON) =====` divider, then JSON. The web SAPI mirrors this with `?analyze=text` / `?analyze=json` query params; `text/plain` content type is preserved.
+- **`Deobfuscator::analyze(string $deobfuscatedCode): Findings`** — new method. Re-parses the pretty-printed deobfuscated source with the existing parser, runs `SecurityAnalysisVisitor` over the resulting tree via a fresh `NodeTraverser`, and returns the `Findings`. The re-parse is intentional: line numbers in findings then match the printed output the user sees, not the in-memory tree (which carries line attributes from the original obfuscated input). Doesn't run unless the caller asks.
+- **`index.php`** — extend `getopt('tof:')` to `getopt('tof:aj')`. After `prettyPrint()`, when `-a` and/or `-j` is set, call `Deobfuscator::analyze($code)` on the pretty-printed string and append the formatted report(s) to stdout. The `-aj` combination prints text first, then a `===== Analysis (JSON) =====` divider, then JSON. The web SAPI mirrors this with `?analyze=text` / `?analyze=json` / `?analyze=both` query params; `text/plain` content type is preserved.
 - **`test.php`** — extend the fixture parser to recognise an optional `ANALYSIS` block per test case. Existing fixtures without the block work exactly as today.
 
 ### Why a fresh traverser, not piggyback on `ReducerVisitor`
