@@ -19,7 +19,7 @@ while ($testfile = readdir($d)) {
         exit(1);
     }
     $tests = array();
-    $curTest = array('input' => array(), 'output' => array(), 'analysis' => null, 'analysis_text' => null);
+    $curTest = array('input' => array(), 'output' => array(), 'analysis' => null, 'analysis_text' => null, 'analysis_json' => null);
     $lines = null;
     while (!feof($f)) {
         $line = fgets($f);
@@ -27,7 +27,7 @@ while ($testfile = readdir($d)) {
         if ($trim === 'INPUT') {
             if ($lines !== null) {
                 $tests[] = $curTest;
-                $curTest = array('input' => array(), 'output' => array(), 'analysis' => null, 'analysis_text' => null);
+                $curTest = array('input' => array(), 'output' => array(), 'analysis' => null, 'analysis_text' => null, 'analysis_json' => null);
             }
             $lines = &$curTest['input'];
             continue;
@@ -41,6 +41,10 @@ while ($testfile = readdir($d)) {
         } elseif ($trim === 'ANALYSIS-TEXT') {
             $curTest['analysis_text'] = array();
             $lines = &$curTest['analysis_text'];
+            continue;
+        } elseif ($trim === 'ANALYSIS-JSON') {
+            $curTest['analysis_json'] = array();
+            $lines = &$curTest['analysis_json'];
             continue;
         }
         if ($lines !== null) {
@@ -114,7 +118,26 @@ while ($testfile = readdir($d)) {
             echo implode("\n", array_map(function($l) { return "[]: $l"; }, explode("\n", $analysisTextGot)));
             echo "\n";
         }
-        if ($deobfPass && $analysisPass && $analysisTextPass) {
+        $analysisJsonPass = true;
+        $analysisJsonExpected = null;
+        $analysisJsonGot = null;
+        if (isset($test['analysis_json']) && $test['analysis_json'] !== null) {
+            $analysisJsonExpected = trim(implode('', $test['analysis_json']));
+            $findings = $deobf->analyze($out);
+            $formatter = new \PHPDeobfuscator\Analysis\ReportFormatter();
+            $analysisJsonGot = trim($formatter->formatJson($findings));
+            $expectedDecoded = json_decode($analysisJsonExpected, true);
+            $gotDecoded = json_decode($analysisJsonGot, true);
+            $analysisJsonPass = ($expectedDecoded !== null && $expectedDecoded === $gotDecoded);
+        }
+        if (!$analysisJsonPass) {
+            echo "Test $name failed (analysis-json):\n";
+            echo "Expected:\n";
+            echo $analysisJsonExpected . "\n";
+            echo "Got:\n";
+            echo $analysisJsonGot . "\n";
+        }
+        if ($deobfPass && $analysisPass && $analysisTextPass && $analysisJsonPass) {
             echo "Test $name pass\n";
         }
     }

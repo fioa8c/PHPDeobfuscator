@@ -267,3 +267,29 @@ Sinks (2):
   [in-function:helper]  deser      line 7   unserialize
 
 Summary: 2 sources, 2 sinks (2 auto-exec out of 4 total findings). Categories present: code_exec, deser.
+
+INPUT
+$x = $_GET['c'];
+eval($x);
+
+OUTPUT
+$x = $_GET['c'];
+eval($x);
+
+ANALYSIS-JSON
+{
+  "version": 1,
+  "filename": "input.php",
+  "sources": [
+    {"category": "superglobal", "label": "$_GET['c']", "line": 3, "context": "auto-exec"}
+  ],
+  "sinks": [
+    {"category": "code_exec", "label": "eval", "line": 4, "context": "auto-exec", "note": null}
+  ],
+  "summary": {
+    "source_count": 1,
+    "sink_count": 1,
+    "auto_exec_count": 2,
+    "categories_present": ["code_exec"]
+  }
+}

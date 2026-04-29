@@ -74,4 +74,35 @@ class ReportFormatter
 
         return implode("\n", $out);
     }
+
+    public function formatJson(Findings $f, string $filename = 'input.php'): string
+    {
+        $payload = [
+            'version' => 1,
+            'filename' => $filename,
+            'sources' => array_map([$this, 'findingToArray'], $f->sortedSources()),
+            'sinks' => array_map([$this, 'findingToArray'], $f->sortedSinks()),
+            'summary' => [
+                'source_count' => count($f->getSources()),
+                'sink_count' => count($f->getSinks()),
+                'auto_exec_count' => $f->autoExecCount(),
+                'categories_present' => $f->categoriesPresent(),
+            ],
+        ];
+        return json_encode($payload, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES);
+    }
+
+    private function findingToArray(Finding $f): array
+    {
+        $out = [
+            'category' => $f->category,
+            'label' => $f->label,
+            'line' => $f->line,
+            'context' => $f->context,
+        ];
+        if ($f->kind === 'sink' || $f->kind === 'meta') {
+            $out['note'] = $f->note;
+        }
+        return $out;
+    }
 }
