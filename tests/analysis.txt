@@ -126,3 +126,20 @@ sinks:
   auto-exec  network  line 9  curl_exec
   auto-exec  mail  line 10  mail
   auto-exec  obfusc  line 11  base64_decode
+
+INPUT
+$x = $_GET['c'];
+eval($x);
+$out = `whoami $x`;
+
+OUTPUT
+$x = $_GET['c'];
+eval($x);
+$out = `whoami {$x}`;
+
+ANALYSIS
+sources:
+  auto-exec  line 3  $_GET['c']
+sinks:
+  auto-exec  code_exec  line 4  eval
+  auto-exec  os_exec  line 5  shell_exec (backticks)

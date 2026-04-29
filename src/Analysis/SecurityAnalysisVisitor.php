@@ -94,6 +94,27 @@ class SecurityAnalysisVisitor extends \PhpParser\NodeVisitorAbstract
 
     private function detectSink(Node $node): void
     {
+        if ($node instanceof Expr\Eval_) {
+            $this->findings->addSink(new Finding(
+                'sink',
+                'code_exec',
+                'eval',
+                $node->getLine(),
+                $this->currentContext()
+            ));
+            return;
+        }
+        if ($node instanceof Expr\ShellExec) {
+            $this->findings->addSink(new Finding(
+                'sink',
+                'os_exec',
+                'shell_exec',
+                $node->getLine(),
+                $this->currentContext(),
+                'backticks'
+            ));
+            return;
+        }
         if ($node instanceof Expr\FuncCall && $node->name instanceof Node\Name) {
             $name = $node->name->toString();
             $category = DangerousCatalog::lookup($name);
