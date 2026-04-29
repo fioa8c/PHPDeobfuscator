@@ -55,6 +55,7 @@ class SecurityAnalysisVisitor extends \PhpParser\NodeVisitorAbstract
         }
 
         $this->detectSource($node);
+        $this->detectSink($node);
     }
 
     public function leaveNode(Node $node)
@@ -84,6 +85,23 @@ class SecurityAnalysisVisitor extends \PhpParser\NodeVisitorAbstract
                     'source',
                     'superglobal',
                     $this->labelForVariable($node),
+                    $node->getLine(),
+                    $this->currentContext()
+                ));
+            }
+        }
+    }
+
+    private function detectSink(Node $node): void
+    {
+        if ($node instanceof Expr\FuncCall && $node->name instanceof Node\Name) {
+            $name = $node->name->toString();
+            $category = DangerousCatalog::lookup($name);
+            if ($category !== null) {
+                $this->findings->addSink(new Finding(
+                    'sink',
+                    $category,
+                    strtolower($name),
                     $node->getLine(),
                     $this->currentContext()
                 ));

@@ -90,3 +90,39 @@ sources:
   in-function:{closure@line:17}  line 18  $_COOKIE['cid']
   in-function:{fn@line:20}  line 20  $_SERVER['HTTP_HOST']
 sinks:
+
+INPUT
+$cmd = $_GET['c'];
+system($cmd);
+exec($cmd);
+unserialize($_POST['d']);
+file_put_contents($f, $d);
+unlink($f);
+curl_exec($ch);
+mail('a@b', 's', 'b');
+$x = base64_decode($enc);
+
+OUTPUT
+$cmd = $_GET['c'];
+system($cmd);
+exec($cmd);
+unserialize($_POST['d']);
+file_put_contents($f, $d);
+unlink($f);
+curl_exec($ch);
+mail('a@b', 's', 'b');
+$x = base64_decode($enc);
+
+ANALYSIS
+sources:
+  auto-exec  line 3  $_GET['c']
+  auto-exec  line 6  $_POST['d']
+sinks:
+  auto-exec  os_exec  line 4  system
+  auto-exec  os_exec  line 5  exec
+  auto-exec  deser  line 6  unserialize
+  auto-exec  file_write  line 7  file_put_contents
+  auto-exec  file_write  line 8  unlink
+  auto-exec  network  line 9  curl_exec
+  auto-exec  mail  line 10  mail
+  auto-exec  obfusc  line 11  base64_decode
