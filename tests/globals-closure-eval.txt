@@ -15,3 +15,22 @@ $decode = function ($strv) {
     return gzinflate(base64_decode($a . $c . $b));
 };
 $out = "./.htaccess";
+
+INPUT
+$decode = function ($s) {
+    return base64_decode($s);
+};
+function poison() {
+    $GLOBALS['unrelated'] = something();
+}
+$out = $GLOBALS['decode']('aGVsbG8=');
+
+OUTPUT
+$decode = function ($s) {
+    return base64_decode($s);
+};
+function poison()
+{
+    $GLOBALS['unrelated'] = something();
+}
+$out = "hello";
