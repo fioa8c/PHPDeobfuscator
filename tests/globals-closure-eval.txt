@@ -147,3 +147,19 @@ $a = function () {
 $b = function ($x) {
     return strrev($x);
 };
+
+INPUT
+$a = function () {
+    return $GLOBALS['b']('hello');
+};
+$b = function ($x = 'default') {
+    return $x;
+};
+
+OUTPUT
+$a = function () {
+    return $GLOBALS['b']('hello');
+};
+$b = function ($x = 'default') {
+    return $x;
+};
