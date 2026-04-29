@@ -24,6 +24,9 @@ class Resolver extends \PhpParser\NodeVisitorAbstract
     private $nameScope;
     private $constants;
 
+    /** @var array<string, \PhpParser\Node\Expr\Closure> */
+    private array $globalClosures = [];
+
     public function __construct()
     {
         // TODO This was in beforeTraverse but we want to share globals
@@ -260,6 +263,16 @@ class Resolver extends \PhpParser\NodeVisitorAbstract
     public function getGlobalScope()
     {
         return $this->globalScope;
+    }
+
+    public function registerGlobalClosure(string $name, Expr\Closure $closure): void
+    {
+        $this->globalClosures[$name] = $closure;
+    }
+
+    public function getGlobalClosure(string $name): ?Expr\Closure
+    {
+        return $this->globalClosures[$name] ?? null;
     }
 
     public function cloneScope()
