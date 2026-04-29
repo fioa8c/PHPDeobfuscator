@@ -46,3 +46,17 @@ $f = function ($s) {
     return getenv($s) . 'x';
 };
 $out = $GLOBALS['f']('PATH');
+
+INPUT
+$prefix = 'p_';
+$f = function ($s) use ($prefix) {
+    return $prefix . $s;
+};
+$out = $GLOBALS['f']('x');
+
+OUTPUT
+$prefix = 'p_';
+$f = function ($s) use($prefix) {
+    return $prefix . $s;
+};
+$out = $GLOBALS['f']('x');
