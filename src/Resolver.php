@@ -275,6 +275,45 @@ class Resolver extends \PhpParser\NodeVisitorAbstract
         return $this->globalClosures[$name] ?? null;
     }
 
+    private function tryRegisterGlobalClosure(Expr\Assign $expr): void
+    {
+        if ($this->scope !== $this->getGlobalScope()) {
+            return;
+        }
+        $rhs = $expr->expr;
+        if (!($rhs instanceof Expr\Closure)) {
+            return;
+        }
+        if ($rhs->uses !== []) {
+            return;
+        }
+        foreach ($rhs->params as $param) {
+            if ($param->byRef) {
+                return;
+            }
+            if ($param->default !== null) {
+                return;
+            }
+        }
+
+        $lhs = $expr->var;
+        $name = null;
+        if ($lhs instanceof Expr\Variable && is_string($lhs->name)) {
+            $name = $lhs->name;
+        } elseif ($lhs instanceof Expr\ArrayDimFetch
+            && $lhs->var instanceof Expr\Variable
+            && $lhs->var->name === 'GLOBALS'
+            && $lhs->dim instanceof \PhpParser\Node\Scalar\String_
+        ) {
+            $name = $lhs->dim->value;
+        }
+        if ($name === null) {
+            return;
+        }
+
+        $this->registerGlobalClosure($name, $rhs);
+    }
+
     public function cloneScope()
     {
         // TODO nameScope and constants
@@ -369,6 +408,7 @@ class Resolver extends \PhpParser\NodeVisitorAbstract
 
     private function onAssign(Expr\Assign $expr)
     {
+        $this->tryRegisterGlobalClosure($expr);
         $varRef = $this->resolveVariable($expr->var);
         $valRef = $this->resolveValue($expr->expr);
         $this->assign($varRef, $valRef);
