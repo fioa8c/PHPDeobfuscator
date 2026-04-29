@@ -34,3 +34,15 @@ function poison()
     $GLOBALS['unrelated'] = something();
 }
 $out = "hello";
+
+INPUT
+$f = function ($s) {
+    return getenv($s) . 'x';
+};
+$out = $GLOBALS['f']('PATH');
+
+OUTPUT
+$f = function ($s) {
+    return getenv($s) . 'x';
+};
+$out = $GLOBALS['f']('PATH');
