@@ -167,6 +167,23 @@ class SecurityAnalysisVisitor extends \PhpParser\NodeVisitorAbstract
             if ($first instanceof Node\Scalar\String_) return self::SKIP;
             return 'non-literal arg';
         }
+        if ($name === 'preg_replace' || $name === 'preg_filter') {
+            $first = $args[0]->value ?? null;
+            if ($first instanceof Node\Scalar\String_) {
+                $pattern = $first->value;
+                $delim = $pattern[0] ?? '';
+                $end = strrpos($pattern, $delim);
+                if ($end === false || $end === 0) {
+                    return self::SKIP; // malformed — don't flag
+                }
+                $modifiers = substr($pattern, $end + 1);
+                if (strpos($modifiers, 'e') !== false) {
+                    return 'e modifier';
+                }
+                return self::SKIP;
+            }
+            return 'non-literal pattern';
+        }
         return null;
     }
 

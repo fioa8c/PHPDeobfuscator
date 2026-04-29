@@ -178,3 +178,22 @@ sources:
   auto-exec  line 4  $_GET['url']
 sinks:
   auto-exec  header_inj  line 4  header (non-literal arg)
+
+INPUT
+$x = $_GET['v'];
+preg_replace('/(.+)/e', 'strtoupper("$1")', $x);
+preg_filter($pat, 'r', $x);
+preg_replace('/x/', 'y', $x);
+
+OUTPUT
+$x = $_GET['v'];
+preg_replace('/(.+)/e', 'strtoupper("$1")', $x);
+preg_filter($pat, 'r', $x);
+preg_replace('/x/', 'y', $x);
+
+ANALYSIS
+sources:
+  auto-exec  line 3  $_GET['v']
+sinks:
+  auto-exec  code_exec  line 4  preg_replace (e modifier)
+  auto-exec  code_exec  line 5  preg_filter (non-literal pattern)
