@@ -11,6 +11,7 @@ class Deobfuscator
     private $prettyPrinter;
 
     private $firstPass;
+    private $closurePrepass;
     private $secondPass;
 
     private $fileSystem;
@@ -24,14 +25,17 @@ class Deobfuscator
         $this->prettyPrinter = new ExtendedPrettyPrinter();
 
         $this->firstPass = new \PhpParser\NodeTraverser;
+        $this->closurePrepass = new \PhpParser\NodeTraverser;
         $this->secondPass = new \PhpParser\NodeTraverser;
 
+        $resolver = new Resolver();
+
         $this->firstPass->addVisitor(new ControlFlowVisitor());
+        $this->closurePrepass->addVisitor(new ClosureRegistryPrepass($resolver));
 
         if ($dumpOrig) {
             $this->secondPass->addVisitor(new AddOriginalVisitor($this));
         }
-        $resolver = new Resolver();
         $this->secondPass->addVisitor($resolver);
         $this->secondPass->addVisitor(new ResolveValueVisitor($resolver));
 
@@ -106,6 +110,7 @@ class Deobfuscator
     public function deobfuscate(array $tree)
     {
         $tree = $this->firstPass->traverse($tree);
+        $tree = $this->closurePrepass->traverse($tree);
         $tree = $this->secondPass->traverse($tree);
         return $tree;
     }
