@@ -163,3 +163,29 @@ $a = function () {
 $b = function ($x = 'default') {
     return $x;
 };
+
+INPUT
+$a = fn() => $b = function () {
+    return $GLOBALS['c']('hello');
+};
+$c = function ($x) {
+    return strrev($x);
+};
+$out = $GLOBALS['b']();
+
+OUTPUT
+$a = fn() => $b = function () {
+    return "olleh";
+};
+$c = function ($x) {
+    return strrev($x);
+};
+$out = $GLOBALS['b']();
+
+INPUT
+$x = 'outer';
+$f = fn($x) => $x . 'suffix';
+
+OUTPUT
+$x = 'outer';
+$f = fn($x) => $x . 'suffix';
