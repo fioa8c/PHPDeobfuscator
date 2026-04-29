@@ -170,7 +170,8 @@ class Resolver extends \PhpParser\NodeVisitorAbstract
     {
         return $node instanceof Stmt\Function_
             || $node instanceof Stmt\ClassMethod
-            || $node instanceof Expr\Closure;
+            || $node instanceof Expr\Closure
+            || $node instanceof Expr\ArrowFunction;
     }
 
     private function nameForScope(Node $node)
