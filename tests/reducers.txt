@@ -188,3 +188,11 @@ OUTPUT
 $x = function () {
     echo "hello";
 };
+
+INPUT
+
+$x = strlen('hello');
+
+OUTPUT
+
+$x = 5;

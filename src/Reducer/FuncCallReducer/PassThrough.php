@@ -30,6 +30,7 @@ class PassThrough implements FunctionReducer
             'str_replace',
             'str_rot13',
             'strcmp',
+            'strlen',
             'strrev',
             'strtoupper',
             'strtr',
