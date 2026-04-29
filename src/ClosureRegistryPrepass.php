@@ -60,7 +60,8 @@ class ClosureRegistryPrepass extends NodeVisitorAbstract
     {
         return $node instanceof Expr\Closure
             || $node instanceof Stmt\Function_
-            || $node instanceof Stmt\ClassMethod;
+            || $node instanceof Stmt\ClassMethod
+            || $node instanceof Expr\ArrowFunction;
     }
 
     private function tryRegister(Expr\Assign $assign): void
