@@ -131,3 +131,19 @@ $b = function ($x) {
     return $GLOBALS['a']($x . 'b');
 };
 $out = $GLOBALS['a']('start');
+
+INPUT
+$a = function () {
+    return $GLOBALS['b']('hello');
+};
+$b = function ($x) {
+    return strrev($x);
+};
+
+OUTPUT
+$a = function () {
+    return "olleh";
+};
+$b = function ($x) {
+    return strrev($x);
+};
