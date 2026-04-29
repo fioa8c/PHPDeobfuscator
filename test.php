@@ -19,19 +19,24 @@ while ($testfile = readdir($d)) {
         exit(1);
     }
     $tests = array();
-    $curTest = array('input' => array(), 'output' => array());
+    $curTest = array('input' => array(), 'output' => array(), 'analysis' => null);
     $lines = null;
     while (!feof($f)) {
         $line = fgets($f);
-        if (trim($line) === 'INPUT') {
+        $trim = trim($line);
+        if ($trim === 'INPUT') {
             if ($lines !== null) {
                 $tests[] = $curTest;
-                $curTest = array('input' => array(), 'output' => array());
+                $curTest = array('input' => array(), 'output' => array(), 'analysis' => null);
             }
             $lines = &$curTest['input'];
             continue;
-        } elseif (trim($line) === 'OUTPUT') {
+        } elseif ($trim === 'OUTPUT') {
             $lines = &$curTest['output'];
+            continue;
+        } elseif ($trim === 'ANALYSIS') {
+            $curTest['analysis'] = array();
+            $lines = &$curTest['analysis'];
             continue;
         }
         if ($lines !== null) {
@@ -57,15 +62,36 @@ while ($testfile = readdir($d)) {
             continue;
         }
         $expect = "<?php\n\n" . trim(implode('', $test['output']));
-        if ($out !== $expect) {
-            echo "Test $name failed:\n";
+        $deobfPass = ($out === $expect);
+        $analysisPass = true;
+        $analysisExpected = null;
+        $analysisGot = null;
+        if ($test['analysis'] !== null) {
+            $analysisExpected = trim(implode('', $test['analysis']));
+            $findings = $deobf->analyze($out);
+            $formatter = new \PHPDeobfuscator\Analysis\ReportFormatter();
+            $analysisGot = trim($formatter->formatFixture($findings));
+            $analysisPass = ($analysisGot === $analysisExpected);
+        }
+        if (!$deobfPass) {
+            echo "Test $name failed (deobfuscation):\n";
             echo "Expected:\n";
             echo implode("\n", array_map(function($l) { return "[]: $l"; }, explode("\n", $expect)));
             echo "\n";
             echo "Got:\n";
             echo implode("\n", array_map(function($l) { return "[]: $l"; }, explode("\n", $out)));
             echo "\n";
-        } else {
+        }
+        if (!$analysisPass) {
+            echo "Test $name failed (analysis):\n";
+            echo "Expected:\n";
+            echo implode("\n", array_map(function($l) { return "[]: $l"; }, explode("\n", $analysisExpected)));
+            echo "\n";
+            echo "Got:\n";
+            echo implode("\n", array_map(function($l) { return "[]: $l"; }, explode("\n", $analysisGot)));
+            echo "\n";
+        }
+        if ($deobfPass && $analysisPass) {
             echo "Test $name pass\n";
         }
     }

@@ -99,6 +99,33 @@ class Deobfuscator
         }
     }
 
+    public function analyze(string $deobfuscatedCode): Analysis\Findings
+    {
+        try {
+            $tree = $this->parser->parse($deobfuscatedCode);
+            if ($tree === null) {
+                throw new \RuntimeException('analyze: parser returned null');
+            }
+            $visitor = new Analysis\SecurityAnalysisVisitor();
+            $traverser = new \PhpParser\NodeTraverser();
+            $traverser->addVisitor(new \PhpParser\NodeVisitor\ParentConnectingVisitor());
+            $traverser->addVisitor($visitor);
+            $traverser->traverse($tree);
+            return $visitor->getFindings();
+        } catch (\Throwable $e) {
+            error_log('PHPDeobfuscator analyze() error: ' . $e->getMessage());
+            $findings = new Analysis\Findings();
+            $findings->addSink(new Analysis\Finding(
+                'meta',
+                'analysis_aborted',
+                $e->getMessage(),
+                0,
+                'auto-exec'
+            ));
+            return $findings;
+        }
+    }
+
     public function printFileReductions(array $stmts)
     {
         if ($this->metaVisitor === null) {

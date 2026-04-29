@@ -1,0 +1,10 @@
+INPUT
+$x = $_GET['c'];
+
+OUTPUT
+$x = $_GET['c'];
+
+ANALYSIS
+sources:
+  auto-exec  line 3  $_GET['c']
+sinks:
