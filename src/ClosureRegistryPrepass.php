@@ -9,8 +9,11 @@ use PhpParser\NodeVisitorAbstract;
 
 /**
  * Pre-pass visitor that harvests every top-level closure assignment into
- * Resolver's global-closure registry. Runs as part of firstPass so the
- * registry is fully populated before secondPass starts visiting call sites.
+ * Resolver's global-closure registry. Runs in a dedicated traverser between
+ * firstPass and secondPass so the registry is fully populated before
+ * secondPass starts visiting call sites. (A separate traverser is required
+ * because ControlFlowVisitor in firstPass returns DONT_TRAVERSE_CHILDREN,
+ * which would block sibling visitors from descending into closure bodies.)
  *
  * Without this prepass, FuncCall sites inside closure bodies cannot fold
  * when the closure they reference is declared textually later — Resolver's
