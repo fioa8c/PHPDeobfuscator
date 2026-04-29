@@ -8,3 +8,35 @@ ANALYSIS
 sources:
   auto-exec  line 3  $_GET['c']
 sinks:
+
+INPUT
+$a = $_GET['x'];
+$b = $_POST['y'];
+$c = $_REQUEST['z'];
+$d = $_COOKIE['k'];
+$e = $_FILES['up'];
+$f = $_SERVER['HTTP_USER_AGENT'];
+$g = $_ENV['HOME'];
+$h = $GLOBALS['shared'];
+
+OUTPUT
+$a = $_GET['x'];
+$b = $_POST['y'];
+$c = $_REQUEST['z'];
+$d = $_COOKIE['k'];
+$e = $_FILES['up'];
+$f = $_SERVER['HTTP_USER_AGENT'];
+$g = $_ENV['HOME'];
+$h = $GLOBALS['shared'];
+
+ANALYSIS
+sources:
+  auto-exec  line 3  $_GET['x']
+  auto-exec  line 4  $_POST['y']
+  auto-exec  line 5  $_REQUEST['z']
+  auto-exec  line 6  $_COOKIE['k']
+  auto-exec  line 7  $_FILES['up']
+  auto-exec  line 8  $_SERVER['HTTP_USER_AGENT']
+  auto-exec  line 9  $_ENV['HOME']
+  auto-exec  line 10  $GLOBALS['shared']
+sinks:
