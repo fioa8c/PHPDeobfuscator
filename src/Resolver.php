@@ -168,6 +168,9 @@ class Resolver extends \PhpParser\NodeVisitorAbstract
 
     private function changesScope(Node $node)
     {
+        // ArrowFunction pushes a fresh scope so params don't leak. Auto-capture
+        // by value is intentionally not modelled — outer scalar vars appear
+        // unknown inside the body. See spec 2026-04-29-arrow-function-scope-design.
         return $node instanceof Stmt\Function_
             || $node instanceof Stmt\ClassMethod
             || $node instanceof Expr\Closure
