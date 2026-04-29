@@ -20,7 +20,7 @@ function deobfuscate($code, $filename, $dumpOrig) {
 
 $nodeDumper = new PhpParser\NodeDumper();
 if (php_sapi_name() == 'cli') {
-    $opts = getopt('tof:');
+    $opts = getopt('tof:aj');
     if (!isset($opts['f'])) {
         die("Missing required parameter -f\n");
     }
@@ -30,6 +30,20 @@ if (php_sapi_name() == 'cli') {
     echo $code, "\n";
     if (isset($opts['t'])) {
         echo $nodeDumper->dump($tree), "\n";
+    }
+    if (isset($opts['a']) || isset($opts['j'])) {
+        $deobf = new \PHPDeobfuscator\Deobfuscator();
+        $findings = $deobf->analyze($code);
+        $formatter = new \PHPDeobfuscator\Analysis\ReportFormatter();
+        if (isset($opts['a'])) {
+            echo "\n" . $formatter->formatText($findings, basename($filename)) . "\n";
+        }
+        if (isset($opts['a']) && isset($opts['j'])) {
+            echo "\n===== Analysis (JSON) =====\n";
+        }
+        if (isset($opts['j'])) {
+            echo "\n" . $formatter->formatJson($findings, basename($filename)) . "\n";
+        }
     }
 } else {
     if (isset($_POST['phpdata'])) {
@@ -41,6 +55,21 @@ if (php_sapi_name() == 'cli') {
         if (array_key_exists('tree', $_GET)) {
             echo '======== Tree =======', "\n";
             echo $nodeDumper->dump($tree), "\n";
+        }
+        if (isset($_GET['analyze'])) {
+            $mode = $_GET['analyze'];
+            $deobf = new \PHPDeobfuscator\Deobfuscator();
+            $findings = $deobf->analyze($code);
+            $formatter = new \PHPDeobfuscator\Analysis\ReportFormatter();
+            if ($mode === 'text' || $mode === 'both') {
+                echo "\n" . $formatter->formatText($findings, 'input.php') . "\n";
+            }
+            if ($mode === 'both') {
+                echo "\n===== Analysis (JSON) =====\n";
+            }
+            if ($mode === 'json' || $mode === 'both') {
+                echo "\n" . $formatter->formatJson($findings, 'input.php') . "\n";
+            }
         }
     } else {
         echo <<<HTML
