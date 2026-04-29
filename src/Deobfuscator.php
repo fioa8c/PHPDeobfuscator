@@ -115,7 +115,7 @@ class Deobfuscator
         } catch (\Throwable $e) {
             error_log('PHPDeobfuscator analyze() error: ' . $e->getMessage());
             $findings = new Analysis\Findings();
-            $findings->addSink(new Analysis\Finding(
+            $findings->addMeta(new Analysis\Finding(
                 'meta',
                 'analysis_aborted',
                 $e->getMessage(),

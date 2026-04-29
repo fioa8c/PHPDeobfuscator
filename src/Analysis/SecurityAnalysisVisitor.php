@@ -115,6 +115,7 @@ class SecurityAnalysisVisitor extends \PhpParser\NodeVisitorAbstract
 
     private function qualifyMethod(string $name): string
     {
+        // Scan inward (innermost first) for the nearest enclosing class/trait/interface.
         for ($i = count($this->nameStack) - 1; $i >= 0; $i--) {
             $entry = $this->nameStack[$i];
             if (in_array($entry['kind'], ['class', 'trait', 'interface', 'anon_class'], true)) {
@@ -134,6 +135,7 @@ class SecurityAnalysisVisitor extends \PhpParser\NodeVisitorAbstract
 
     private function currentNamespace(): string
     {
+        // PHP forbids nested namespace declarations, so at most one entry exists.
         foreach ($this->nameStack as $entry) {
             if ($entry['kind'] === 'namespace') return $entry['name'];
         }

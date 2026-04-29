@@ -8,6 +8,8 @@ class Findings
     private array $sources = [];
     /** @var Finding[] */
     private array $sinks = [];
+    /** @var Finding[] */
+    private array $meta = [];
 
     public function addSource(Finding $f): void
     {
@@ -17,6 +19,11 @@ class Findings
     public function addSink(Finding $f): void
     {
         $this->sinks[] = $f;
+    }
+
+    public function addMeta(Finding $f): void
+    {
+        $this->meta[] = $f;
     }
 
     /** @return Finding[] */
@@ -29,6 +36,12 @@ class Findings
     public function getSinks(): array
     {
         return $this->sinks;
+    }
+
+    /** @return Finding[] */
+    public function getMeta(): array
+    {
+        return $this->meta;
     }
 
     public function count(): int
