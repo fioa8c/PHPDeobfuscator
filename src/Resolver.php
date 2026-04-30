@@ -27,6 +27,9 @@ class Resolver extends \PhpParser\NodeVisitorAbstract
     /** @var array<string, \PhpParser\Node\Expr\Closure> */
     private array $globalClosures = [];
 
+    /** @var array<string, \PhpParser\Node\Stmt\Function_> */
+    private array $userFunctions = [];
+
     public function __construct()
     {
         // TODO This was in beforeTraverse but we want to share globals
@@ -277,6 +280,16 @@ class Resolver extends \PhpParser\NodeVisitorAbstract
     public function getGlobalClosure(string $name): ?Expr\Closure
     {
         return $this->globalClosures[$name] ?? null;
+    }
+
+    public function registerUserFunction(string $name, \PhpParser\Node\Stmt\Function_ $func): void
+    {
+        $this->userFunctions[strtolower($name)] = $func;
+    }
+
+    public function getUserFunction(string $name): ?\PhpParser\Node\Stmt\Function_
+    {
+        return $this->userFunctions[strtolower($name)] ?? null;
     }
 
     public function cloneScope()
