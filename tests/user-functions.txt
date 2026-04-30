@@ -1,0 +1,12 @@
+INPUT
+
+function addone($n) { return $n + 1; }
+$x = addone(5);
+
+OUTPUT
+
+function addone($n)
+{
+    return $n + 1;
+}
+$x = 6;

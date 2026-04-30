@@ -282,12 +282,13 @@ class Resolver extends \PhpParser\NodeVisitorAbstract
         return $this->globalClosures[$name] ?? null;
     }
 
-    public function registerUserFunction(string $name, \PhpParser\Node\Stmt\Function_ $func): void
+    public function registerUserFunction(string $name, Stmt\Function_ $func): void
     {
+        // PHP function names are case-insensitive; normalise to lowercase.
         $this->userFunctions[strtolower($name)] = $func;
     }
 
-    public function getUserFunction(string $name): ?\PhpParser\Node\Stmt\Function_
+    public function getUserFunction(string $name): ?Stmt\Function_
     {
         return $this->userFunctions[strtolower($name)] ?? null;
     }

@@ -211,15 +211,3 @@ $b = 1 % 0;
 $c = "abc" * 2;
 $d = "xyz" + 1;
 
-INPUT
-
-function addone($n) { return $n + 1; }
-$x = addone(5);
-
-OUTPUT
-
-function addone($n)
-{
-    return $n + 1;
-}
-$x = 6;
