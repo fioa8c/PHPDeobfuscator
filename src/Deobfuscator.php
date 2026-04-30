@@ -32,6 +32,7 @@ class Deobfuscator
 
         $this->firstPass->addVisitor(new ControlFlowVisitor());
         $this->closurePrepass->addVisitor(new ClosureRegistryPrepass($resolver));
+        $this->closurePrepass->addVisitor(new UserFunctionPrepass($resolver));
 
         if ($dumpOrig) {
             $this->secondPass->addVisitor(new AddOriginalVisitor($this));
