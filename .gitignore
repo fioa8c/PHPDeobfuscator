@@ -4,3 +4,9 @@
 
 # Git worktrees
 /.worktrees/
+
+# MacOS
+.DS_Store
+
+.htaccess
+
