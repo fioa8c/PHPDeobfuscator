@@ -286,6 +286,7 @@ ANALYSIS-JSON
   "sinks": [
     {"category": "code_exec", "label": "eval", "line": 4, "context": "auto-exec", "note": null}
   ],
+  "errors": [],
   "summary": {
     "source_count": 1,
     "sink_count": 1,

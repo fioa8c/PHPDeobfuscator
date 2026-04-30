@@ -6,15 +6,26 @@ class ReportFormatter
 {
     public function formatFixture(Findings $f): string
     {
+        $sinks = [];
+        $errors = [];
+        foreach ($f->sortedSinks() as $s) {
+            if ($s->kind === 'meta') $errors[] = $s; else $sinks[] = $s;
+        }
         $lines = [];
         $lines[] = 'sources:';
         foreach ($f->sortedSources() as $s) {
             $lines[] = '  ' . $s->context . '  line ' . $s->line . '  ' . $s->label;
         }
         $lines[] = 'sinks:';
-        foreach ($f->sortedSinks() as $s) {
+        foreach ($sinks as $s) {
             $note = $s->note === null ? '' : ' (' . $s->note . ')';
             $lines[] = '  ' . $s->context . '  ' . $s->category . '  line ' . $s->line . '  ' . $s->label . $note;
+        }
+        if (!empty($errors)) {
+            $lines[] = 'errors:';
+            foreach ($errors as $e) {
+                $lines[] = '  ' . $e->context . '  ' . $e->category . '  ' . $e->label;
+            }
         }
         return implode("\n", $lines);
     }
@@ -22,7 +33,11 @@ class ReportFormatter
     public function formatText(Findings $f, string $filename = ''): string
     {
         $sources = $f->sortedSources();
-        $sinks = $f->sortedSinks();
+        $sinks = [];
+        $errors = [];
+        foreach ($f->sortedSinks() as $s) {
+            if ($s->kind === 'meta') $errors[] = $s; else $sinks[] = $s;
+        }
 
         $contextWidth = 12;
         foreach (array_merge($sources, $sinks) as $finding) {
@@ -61,6 +76,13 @@ class ReportFormatter
                 $out[] = '  ' . $ctx . $cat . 'line ' . $s->line . '   ' . $s->label . $note;
             }
         }
+        if (!empty($errors)) {
+            $out[] = '';
+            $out[] = 'Errors (' . count($errors) . '):';
+            foreach ($errors as $e) {
+                $out[] = '  [' . $e->category . '] ' . $e->label;
+            }
+        }
         $out[] = '';
         $cats = $f->categoriesPresent();
         $out[] = sprintf(
@@ -77,14 +99,20 @@ class ReportFormatter
 
     public function formatJson(Findings $f, string $filename = 'input.php'): string
     {
+        $sinks = [];
+        $errors = [];
+        foreach ($f->sortedSinks() as $s) {
+            if ($s->kind === 'meta') $errors[] = $s; else $sinks[] = $s;
+        }
         $payload = [
             'version' => 1,
             'filename' => $filename,
             'sources' => array_map([$this, 'findingToArray'], $f->sortedSources()),
-            'sinks' => array_map([$this, 'findingToArray'], $f->sortedSinks()),
+            'sinks' => array_map([$this, 'findingToArray'], $sinks),
+            'errors' => array_map([$this, 'findingToArray'], $errors),
             'summary' => [
                 'source_count' => count($f->getSources()),
-                'sink_count' => count($f->getSinks()),
+                'sink_count' => count($sinks),
                 'auto_exec_count' => $f->autoExecCount(),
                 'categories_present' => $f->categoriesPresent(),
             ],
