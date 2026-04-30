@@ -221,7 +221,7 @@ sources:
 sinks:
   auto-exec  dispatch  line 4  $variable() (variable function)
   auto-exec  dispatch  line 5  $obj->$method() (variable method)
-  auto-exec  dispatch  line 6  Class::$$method() (variable static method)
+  auto-exec  dispatch  line 6  Class::$$method() (variable static method (variable class))
   auto-exec  dispatch  line 8  new $variable (variable class)
 
 INPUT
@@ -361,3 +361,46 @@ sources:
 sinks:
 errors:
   auto-exec  reparse_fallback  fell back to in-memory tree (line numbers may not match printed output)
+
+INPUT
+$pat1 = $_GET['p'];
+preg_replace('(.+)e', 'strtoupper("$1")', $pat1);
+preg_replace('{(.+)}e', 'evil', $pat1);
+preg_replace('[(.+)]e', 'evil', $pat1);
+preg_replace('<(.+)>e', 'evil', $pat1);
+
+OUTPUT
+$pat1 = $_GET['p'];
+preg_replace('(.+)e', 'strtoupper("$1")', $pat1);
+preg_replace('{(.+)}e', 'evil', $pat1);
+preg_replace('[(.+)]e', 'evil', $pat1);
+preg_replace('<(.+)>e', 'evil', $pat1);
+
+ANALYSIS
+sources:
+  auto-exec  line 3  $_GET['p']
+sinks:
+  auto-exec  code_exec  line 4  preg_replace (e modifier)
+  auto-exec  code_exec  line 5  preg_replace (e modifier)
+  auto-exec  code_exec  line 6  preg_replace (e modifier)
+  auto-exec  code_exec  line 7  preg_replace (e modifier)
+
+INPUT
+$method = $_GET['m'];
+$cls = $_POST['c'];
+$obj?->$method();
+$cls::method('arg');
+
+OUTPUT
+$method = $_GET['m'];
+$cls = $_POST['c'];
+$obj?->{$method}();
+$cls::method('arg');
+
+ANALYSIS
+sources:
+  auto-exec  line 3  $_GET['m']
+  auto-exec  line 4  $_POST['c']
+sinks:
+  auto-exec  dispatch  line 5  $obj?->$method() (variable method (nullsafe))
+  auto-exec  dispatch  line 6  Class::$$method() (variable static class)

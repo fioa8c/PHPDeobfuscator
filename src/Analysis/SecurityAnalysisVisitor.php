@@ -93,7 +93,7 @@ class SecurityAnalysisVisitor extends \PhpParser\NodeVisitorAbstract
             }
         }
 
-        if ($node instanceof Expr\FuncCall && $node->name instanceof Node\Name) {
+        if ($node instanceof Expr\FuncCall && $node->name instanceof Node\Name && !$node->isFirstClassCallable()) {
             $name = strtolower($node->name->toString());
             if (in_array($name, ['file_get_contents', 'fopen', 'stream_get_contents'], true)) {
                 $first = $node->args[0]->value ?? null;
@@ -170,19 +170,38 @@ class SecurityAnalysisVisitor extends \PhpParser\NodeVisitorAbstract
             ));
             return;
         }
-        if ($node instanceof Expr\StaticCall && !($node->name instanceof Node\Identifier)) {
+        if ($node instanceof Expr\NullsafeMethodCall && !($node->name instanceof Node\Identifier)) {
             $this->findings->addSink(new Finding(
-                'sink', 'dispatch', 'Class::$$method()', $node->getLine(), $this->currentContext(), 'variable static method'
+                'sink', 'dispatch', '$obj?->$method()', $node->getLine(), $this->currentContext(), 'variable method (nullsafe)'
             ));
             return;
         }
-        if ($node instanceof Expr\New_ && !($node->class instanceof Node\Name)) {
+        if ($node instanceof Expr\StaticCall) {
+            $variableClass = !($node->class instanceof Node\Name);
+            $variableMethod = !($node->name instanceof Node\Identifier);
+            if ($variableClass || $variableMethod) {
+                if ($variableClass && $variableMethod) {
+                    $note = 'variable static method (variable class)';
+                } elseif ($variableMethod) {
+                    $note = 'variable static method';
+                } else {
+                    $note = 'variable static class';
+                }
+                $this->findings->addSink(new Finding(
+                    'sink', 'dispatch', 'Class::$$method()', $node->getLine(), $this->currentContext(), $note
+                ));
+                return;
+            }
+        }
+        // Only flag `new $expr` (variable class). Exclude `new ClassName` (Name)
+        // and `new class { ... }` (Stmt\Class_, anonymous-class definition).
+        if ($node instanceof Expr\New_ && $node->class instanceof Expr) {
             $this->findings->addSink(new Finding(
                 'sink', 'dispatch', 'new $variable', $node->getLine(), $this->currentContext(), 'variable class'
             ));
             return;
         }
-        if ($node instanceof Expr\FuncCall && $node->name instanceof Node\Name) {
+        if ($node instanceof Expr\FuncCall && $node->name instanceof Node\Name && !$node->isFirstClassCallable()) {
             $name = strtolower($node->name->toString());
             $category = DangerousCatalog::lookup($name);
             if ($category !== null) {
@@ -216,7 +235,11 @@ class SecurityAnalysisVisitor extends \PhpParser\NodeVisitorAbstract
             if ($first instanceof Node\Scalar\String_) {
                 $pattern = $first->value;
                 $delim = $pattern[0] ?? '';
-                $end = strrpos($pattern, $delim);
+                // PHP allows paired bracket delimiters; the closer is what we
+                // search for to find the modifier suffix.
+                static $pairs = ['(' => ')', '{' => '}', '[' => ']', '<' => '>'];
+                $close = $pairs[$delim] ?? $delim;
+                $end = strrpos($pattern, $close);
                 if ($end === false || $end === 0) {
                     return self::SKIP; // malformed — don't flag
                 }
