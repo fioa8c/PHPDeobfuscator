@@ -313,3 +313,33 @@ preg_filter('/a/', 'b', $z);
 ANALYSIS
 sources:
 sinks:
+
+INPUT
+namespace Acme\Inner;
+
+class Worker {
+    public function run() {
+        $cb = function () {
+            eval($_POST['x']);
+        };
+    }
+}
+
+OUTPUT
+namespace Acme\Inner;
+
+class Worker
+{
+    public function run()
+    {
+        $cb = function () {
+            eval($_POST['x']);
+        };
+    }
+}
+
+ANALYSIS
+sources:
+  in-function:{closure@line:9}  line 10  $_POST['x']
+sinks:
+  in-function:{closure@line:9}  code_exec  line 10  eval
