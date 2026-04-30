@@ -62,7 +62,7 @@ class FuncCallReducer extends AbstractReducer
     private function makeFunctionCall($name, $node)
     {
         if(!isset($this->funcCallMap[$name])) {
-            return;
+            return $this->tryInlineUserFunction($name, $node);
         }
         $args = array();
         foreach ($node->args as $arg) {
@@ -212,6 +212,77 @@ class FuncCallReducer extends AbstractReducer
             return null;
         }
         return $name;
+    }
+
+    /**
+     * Fallback for calls to user-defined functions registered by
+     * UserFunctionPrepass. Mirrors resolveGlobalsLiteralClosureCall:
+     * builds a synthetic closure that binds the call's arguments to the
+     * function's parameter names, runs the body through EvalReducer::runEvalTree,
+     * and returns the scalar result if the body reduces fully.
+     */
+    private function tryInlineUserFunction(string $name, Node\Expr\FuncCall $node): ?Node
+    {
+        $func = $this->resolver->getUserFunction($name);
+        if ($func === null) {
+            return null;
+        }
+        if (count($func->params) !== count($node->args)) {
+            return null;
+        }
+        foreach ($node->args as $arg) {
+            if ($arg->unpack || $arg->byRef) {
+                return null;
+            }
+        }
+        foreach ($func->params as $param) {
+            if ($param->variadic) {
+                return null;
+            }
+        }
+
+        try {
+            $printer = new \PHPDeobfuscator\ExtendedPrettyPrinter();
+            $bindings = '';
+            foreach ($func->params as $i => $param) {
+                $paramName = $param->var->name;
+                if (!is_string($paramName)) {
+                    return null;
+                }
+                $argSrc = $printer->prettyPrintExpr($node->args[$i]->value);
+                $bindings .= '$' . $paramName . ' = ' . $argSrc . ";\n";
+            }
+            $bodySrc = $printer->prettyPrint($func->stmts);
+            $source = "function () {\n" . $bindings . $bodySrc . "\n};";
+            $stmts = $this->evalReducer->runEvalTree($source);
+        } catch (\Throwable $e) {
+            return null;
+        }
+
+        if (count($stmts) !== 1 || !($stmts[0] instanceof Node\Stmt\Expression)) {
+            return null;
+        }
+        $reducedClosure = $stmts[0]->expr;
+        if (!($reducedClosure instanceof Node\Expr\Closure)) {
+            return null;
+        }
+        $bodyStmts = $reducedClosure->stmts;
+        if (empty($bodyStmts)) {
+            return null;
+        }
+        $last = end($bodyStmts);
+        if (!($last instanceof Node\Stmt\Return_) || $last->expr === null) {
+            return null;
+        }
+        try {
+            $value = Utils::getValue($last->expr);
+        } catch (\PHPDeobfuscator\Exceptions\BadValueException $e) {
+            return null;
+        }
+        if (is_array($value) || is_object($value) || is_resource($value)) {
+            return null;
+        }
+        return Utils::scalarToNode($value);
     }
 
 }
