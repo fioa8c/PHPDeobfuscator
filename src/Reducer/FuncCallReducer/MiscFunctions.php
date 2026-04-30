@@ -27,6 +27,7 @@ class MiscFunctions implements FunctionReducer
             'preg_replace',
             'reset',
             'create_function',
+            'array_map'
         );
     }
 
@@ -42,6 +43,8 @@ class MiscFunctions implements FunctionReducer
             return Utils::scalarToNode(reset($arg));
         case 'create_function':
             return $this->createFunction($args[0], $args[1]);
+        case 'array_map':
+                return $this->staticArrayMap($args[0], $args[1]);
         }
     }
 
@@ -152,6 +155,34 @@ class MiscFunctions implements FunctionReducer
         } catch (\Exception $e) {
             return null;
         }
+    }
+    private function staticArrayMap($callback, $items)
+    {
+        if (!is_string($callback) || !is_array($items)) {
+            return null;
+        }
+        // Reject things like 'system' or 'eval' early — we are NOT executing arbitrary PHP.
+        if (!preg_match('/^[A-Za-z_][A-Za-z0-9_]*$/', $callback)) {
+            return null;
+        }
+
+        $out = array();
+        foreach ($items as $key => $val) {
+            if (!is_scalar($val) && !is_null($val)) {
+                return null;        // give up; can't symbolically pass non-scalars yet
+            }
+            $valSrc = var_export($val, true);
+            try {
+                // Reuse the eval pipeline: parse a tiny PHP snippet that calls the callback,
+                // run it through the full deobf pass, and read the reduced return value.
+                $stmts  = $this->evalReducer->runEvalTree("return {$callback}({$valSrc});");
+                $expr   = $stmts[0]->expr;
+                $out[$key] = Utils::getValue($expr);
+            } catch (\Throwable $e) {
+                return null;        // anything weird? bail safely
+            }
+        }
+        return Utils::scalarToNode($out);
     }
 
 }
