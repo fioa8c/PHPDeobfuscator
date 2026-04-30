@@ -249,7 +249,15 @@ class FuncCallReducer extends AbstractReducer
                 if (!is_string($paramName)) {
                     return null;
                 }
-                $argSrc = $printer->prettyPrintExpr($node->args[$i]->value);
+                try {
+                    $argVal = Utils::getValue($node->args[$i]->value);
+                    if (is_array($argVal) || is_object($argVal) || is_resource($argVal)) {
+                        return null;
+                    }
+                    $argSrc = $printer->prettyPrintExpr(Utils::scalarToNode($argVal));
+                } catch (\PHPDeobfuscator\Exceptions\BadValueException $e) {
+                    $argSrc = $printer->prettyPrintExpr($node->args[$i]->value);
+                }
                 $bindings .= '$' . $paramName . ' = ' . $argSrc . ";\n";
             }
             $bodySrc = $printer->prettyPrint($func->stmts);
