@@ -45,7 +45,11 @@ class ReducerVisitor extends \PhpParser\NodeVisitorAbstract
                 return $newNode->expr;
             }
             return $newNode;
-        } catch (Exceptions\BadValueException $e) {
+        } catch (Exceptions\BadValueException | \TypeError | \DivisionByZeroError $e) {
+            // PHP 8 raises \TypeError on arithmetic with non-numeric strings
+            // (e.g. "abc" - 1) and \DivisionByZeroError on x % 0. Treat these
+            // the same as BadValueException: skip the reduction, leave the
+            // original node intact.
         }
     }
 

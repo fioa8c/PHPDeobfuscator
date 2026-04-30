@@ -2752,7 +2752,7 @@
  }   catch    (  Throwable  $ptmliuazngz )    {  
     }   catch  (   Exception    $ptmliuazngz  )   {  
    } 
-  } 
+   
   function mthbmqbnai()    {   
   $zhuwljmztk  = $GLOBALS[ "cjqwrgnwen"   ];  
    $lrjsacique  = $zhuwljmztk  [   56   ];   

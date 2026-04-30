@@ -196,3 +196,17 @@ $x = strlen('hello');
 OUTPUT
 
 $x = 5;
+
+INPUT
+
+$a = "abc" - 1;
+$b = 1 % 0;
+$c = "abc" * 2;
+$d = "xyz" + 1;
+
+OUTPUT
+
+$a = "abc" - 1;
+$b = 1 % 0;
+$c = "abc" * 2;
+$d = "xyz" + 1;
