@@ -293,3 +293,23 @@ ANALYSIS-JSON
     "categories_present": ["code_exec"]
   }
 }
+
+INPUT
+include 'config.php';
+require 'lib/setup.php';
+header('Content-Type: text/html');
+header('Cache-Control: no-cache');
+preg_replace('/x/', 'y', $z);
+preg_filter('/a/', 'b', $z);
+
+OUTPUT
+include 'config.php';
+require 'lib/setup.php';
+header('Content-Type: text/html');
+header('Cache-Control: no-cache');
+preg_replace('/x/', 'y', $z);
+preg_filter('/a/', 'b', $z);
+
+ANALYSIS
+sources:
+sinks:
