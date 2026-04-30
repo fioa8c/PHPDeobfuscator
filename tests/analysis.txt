@@ -1,0 +1,406 @@
+INPUT
+$x = $_GET['c'];
+
+OUTPUT
+$x = $_GET['c'];
+
+ANALYSIS
+sources:
+  auto-exec  line 3  $_GET['c']
+sinks:
+
+INPUT
+$a = $_GET['x'];
+$b = $_POST['y'];
+$c = $_REQUEST['z'];
+$d = $_COOKIE['k'];
+$e = $_FILES['up'];
+$f = $_SERVER['HTTP_USER_AGENT'];
+$g = $_ENV['HOME'];
+$h = $GLOBALS['shared'];
+
+OUTPUT
+$a = $_GET['x'];
+$b = $_POST['y'];
+$c = $_REQUEST['z'];
+$d = $_COOKIE['k'];
+$e = $_FILES['up'];
+$f = $_SERVER['HTTP_USER_AGENT'];
+$g = $_ENV['HOME'];
+$h = $GLOBALS['shared'];
+
+ANALYSIS
+sources:
+  auto-exec  line 3  $_GET['x']
+  auto-exec  line 4  $_POST['y']
+  auto-exec  line 5  $_REQUEST['z']
+  auto-exec  line 6  $_COOKIE['k']
+  auto-exec  line 7  $_FILES['up']
+  auto-exec  line 8  $_SERVER['HTTP_USER_AGENT']
+  auto-exec  line 9  $_ENV['HOME']
+  auto-exec  line 10  $GLOBALS['shared']
+sinks:
+
+INPUT
+namespace App\Web;
+
+class Handler {
+    public function handle() {
+        $a = $_POST['data'];
+    }
+}
+
+function helper() {
+    $b = $_GET['q'];
+}
+
+$top = $_REQUEST['t'];
+
+$cb = function () {
+    $c = $_COOKIE['cid'];
+};
+
+$arr = fn() => $_SERVER['HTTP_HOST'];
+
+OUTPUT
+namespace App\Web;
+
+class Handler
+{
+    public function handle()
+    {
+        $a = $_POST['data'];
+    }
+}
+function helper()
+{
+    $b = $_GET['q'];
+}
+$top = $_REQUEST['t'];
+$cb = function () {
+    $c = $_COOKIE['cid'];
+};
+$arr = fn() => $_SERVER['HTTP_HOST'];
+
+ANALYSIS
+sources:
+  auto-exec  line 16  $_REQUEST['t']
+  in-function:App\Web\Handler::handle  line 9  $_POST['data']
+  in-function:App\Web\helper  line 14  $_GET['q']
+  in-function:{closure@line:17}  line 18  $_COOKIE['cid']
+  in-function:{fn@line:20}  line 20  $_SERVER['HTTP_HOST']
+sinks:
+
+INPUT
+$cmd = $_GET['c'];
+system($cmd);
+exec($cmd);
+unserialize($_POST['d']);
+file_put_contents($f, $d);
+unlink($f);
+curl_exec($ch);
+mail('a@b', 's', 'b');
+$x = base64_decode($enc);
+
+OUTPUT
+$cmd = $_GET['c'];
+system($cmd);
+exec($cmd);
+unserialize($_POST['d']);
+file_put_contents($f, $d);
+unlink($f);
+curl_exec($ch);
+mail('a@b', 's', 'b');
+$x = base64_decode($enc);
+
+ANALYSIS
+sources:
+  auto-exec  line 3  $_GET['c']
+  auto-exec  line 6  $_POST['d']
+sinks:
+  auto-exec  os_exec  line 4  system
+  auto-exec  os_exec  line 5  exec
+  auto-exec  deser  line 6  unserialize
+  auto-exec  file_write  line 7  file_put_contents
+  auto-exec  file_write  line 8  unlink
+  auto-exec  network  line 9  curl_exec
+  auto-exec  mail  line 10  mail
+  auto-exec  obfusc  line 11  base64_decode
+
+INPUT
+$x = $_GET['c'];
+eval($x);
+$out = `whoami $x`;
+
+OUTPUT
+$x = $_GET['c'];
+eval($x);
+$out = `whoami {$x}`;
+
+ANALYSIS
+sources:
+  auto-exec  line 3  $_GET['c']
+sinks:
+  auto-exec  code_exec  line 4  eval
+  auto-exec  os_exec  line 5  shell_exec (backticks)
+
+INPUT
+$f = $_GET['f'];
+include $f;
+require_once $f . '.php';
+include 'config.php';
+require 'lib/setup.php';
+
+OUTPUT
+$f = $_GET['f'];
+include $f;
+require_once $f . '.php';
+include 'config.php';
+require 'lib/setup.php';
+
+ANALYSIS
+sources:
+  auto-exec  line 3  $_GET['f']
+sinks:
+  auto-exec  dynamic_inc  line 4  include (non-literal arg)
+  auto-exec  dynamic_inc  line 5  require_once (non-literal arg)
+
+INPUT
+header('Content-Type: text/html');
+header('Location: ' . $_GET['url']);
+
+OUTPUT
+header('Content-Type: text/html');
+header('Location: ' . $_GET['url']);
+
+ANALYSIS
+sources:
+  auto-exec  line 4  $_GET['url']
+sinks:
+  auto-exec  header_inj  line 4  header (non-literal arg)
+
+INPUT
+$x = $_GET['v'];
+preg_replace('/(.+)/e', 'strtoupper("$1")', $x);
+preg_filter($pat, 'r', $x);
+preg_replace('/x/', 'y', $x);
+
+OUTPUT
+$x = $_GET['v'];
+preg_replace('/(.+)/e', 'strtoupper("$1")', $x);
+preg_filter($pat, 'r', $x);
+preg_replace('/x/', 'y', $x);
+
+ANALYSIS
+sources:
+  auto-exec  line 3  $_GET['v']
+sinks:
+  auto-exec  code_exec  line 4  preg_replace (e modifier)
+  auto-exec  code_exec  line 5  preg_filter (non-literal pattern)
+
+INPUT
+$fn = $_GET['fn'];
+$fn('arg');
+$o->$method();
+$c::$$method();
+$cls = $_POST['cls'];
+new $cls();
+
+OUTPUT
+$fn = $_GET['fn'];
+$fn('arg');
+$o->{$method}();
+$c::${$method}();
+$cls = $_POST['cls'];
+new $cls();
+
+ANALYSIS
+sources:
+  auto-exec  line 3  $_GET['fn']
+  auto-exec  line 7  $_POST['cls']
+sinks:
+  auto-exec  dispatch  line 4  $variable() (variable function)
+  auto-exec  dispatch  line 5  $obj->$method() (variable method)
+  auto-exec  dispatch  line 6  Class::$$method() (variable static method (variable class))
+  auto-exec  dispatch  line 8  new $variable (variable class)
+
+INPUT
+$body = file_get_contents('php://input');
+$h = fopen('php://stdin', 'r');
+$other = file_get_contents('config.json');
+
+OUTPUT
+$body = file_get_contents('php://input');
+$h = fopen('php://stdin', 'r');
+$other = file_get_contents('config.json');
+
+ANALYSIS
+sources:
+  auto-exec  line 3  file_get_contents('php://input')
+  auto-exec  line 4  fopen('php://stdin')
+sinks:
+
+INPUT
+$x = $_GET['c'];
+eval($x);
+function helper() {
+    unserialize($_POST['p']);
+}
+
+OUTPUT
+$x = $_GET['c'];
+eval($x);
+function helper()
+{
+    unserialize($_POST['p']);
+}
+
+ANALYSIS-TEXT
+===== Analysis =====
+
+Sources (2):
+  [auto-exec]           line 3   $_GET['c']
+  [in-function:helper]  line 7   $_POST['p']
+
+Sinks (2):
+  [auto-exec]           code_exec  line 4   eval
+  [in-function:helper]  deser      line 7   unserialize
+
+Summary: 2 sources, 2 sinks (2 auto-exec out of 4 total findings). Categories present: code_exec, deser.
+
+INPUT
+$x = $_GET['c'];
+eval($x);
+
+OUTPUT
+$x = $_GET['c'];
+eval($x);
+
+ANALYSIS-JSON
+{
+  "version": 1,
+  "filename": "input.php",
+  "sources": [
+    {"category": "superglobal", "label": "$_GET['c']", "line": 3, "context": "auto-exec"}
+  ],
+  "sinks": [
+    {"category": "code_exec", "label": "eval", "line": 4, "context": "auto-exec", "note": null}
+  ],
+  "errors": [],
+  "summary": {
+    "source_count": 1,
+    "sink_count": 1,
+    "auto_exec_count": 2,
+    "categories_present": ["code_exec"]
+  }
+}
+
+INPUT
+include 'config.php';
+require 'lib/setup.php';
+header('Content-Type: text/html');
+header('Cache-Control: no-cache');
+preg_replace('/x/', 'y', $z);
+preg_filter('/a/', 'b', $z);
+
+OUTPUT
+include 'config.php';
+require 'lib/setup.php';
+header('Content-Type: text/html');
+header('Cache-Control: no-cache');
+preg_replace('/x/', 'y', $z);
+preg_filter('/a/', 'b', $z);
+
+ANALYSIS
+sources:
+sinks:
+
+INPUT
+namespace Acme\Inner;
+
+class Worker {
+    public function run() {
+        $cb = function () {
+            eval($_POST['x']);
+        };
+    }
+}
+
+OUTPUT
+namespace Acme\Inner;
+
+class Worker
+{
+    public function run()
+    {
+        $cb = function () {
+            eval($_POST['x']);
+        };
+    }
+}
+
+ANALYSIS
+sources:
+  in-function:{closure@line:9}  line 10  $_POST['x']
+sinks:
+  in-function:{closure@line:9}  code_exec  line 10  eval
+
+INPUT
+$_GET['c'];
+eval(base64_decode("ZWNobyAnSGVsbG8gV29ybGQnOwo="));
+
+OUTPUT
+$_GET['c'];
+eval /* PHPDeobfuscator eval output */ {
+    echo "Hello World";
+};
+
+ANALYSIS
+sources:
+  auto-exec  line 2  $_GET['c']
+sinks:
+errors:
+  auto-exec  reparse_fallback  fell back to in-memory tree (line numbers may not match printed output)
+
+INPUT
+$pat1 = $_GET['p'];
+preg_replace('(.+)e', 'strtoupper("$1")', $pat1);
+preg_replace('{(.+)}e', 'evil', $pat1);
+preg_replace('[(.+)]e', 'evil', $pat1);
+preg_replace('<(.+)>e', 'evil', $pat1);
+
+OUTPUT
+$pat1 = $_GET['p'];
+preg_replace('(.+)e', 'strtoupper("$1")', $pat1);
+preg_replace('{(.+)}e', 'evil', $pat1);
+preg_replace('[(.+)]e', 'evil', $pat1);
+preg_replace('<(.+)>e', 'evil', $pat1);
+
+ANALYSIS
+sources:
+  auto-exec  line 3  $_GET['p']
+sinks:
+  auto-exec  code_exec  line 4  preg_replace (e modifier)
+  auto-exec  code_exec  line 5  preg_replace (e modifier)
+  auto-exec  code_exec  line 6  preg_replace (e modifier)
+  auto-exec  code_exec  line 7  preg_replace (e modifier)
+
+INPUT
+$method = $_GET['m'];
+$cls = $_POST['c'];
+$obj?->$method();
+$cls::method('arg');
+
+OUTPUT
+$method = $_GET['m'];
+$cls = $_POST['c'];
+$obj?->{$method}();
+$cls::method('arg');
+
+ANALYSIS
+sources:
+  auto-exec  line 3  $_GET['m']
+  auto-exec  line 4  $_POST['c']
+sinks:
+  auto-exec  dispatch  line 5  $obj?->$method() (variable method (nullsafe))
+  auto-exec  dispatch  line 6  Class::$$method() (variable static class)

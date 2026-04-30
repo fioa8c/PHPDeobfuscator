@@ -35,7 +35,7 @@ docker run --rm phpdeobf
 ### CLI
 
 ```
-php index.php [-f filename] [-t] [-o]
+php index.php [-f filename] [-t] [-o] [-a] [-j]
 
 required arguments:
 
@@ -45,13 +45,25 @@ optional arguments:
 
 -t    Dump the output node tree for debugging
 -o    Output comments next to each expression with the original code
+-a    Append a security-analysis text report after the deobfuscated code
+-j    Append a security-analysis JSON report after the deobfuscated code
 ```
 
-The deobfuscated output is printed to STDOUT.
+The deobfuscated output is printed to STDOUT. When `-a` and `-j` are combined, the text report is emitted first, then a `===== Analysis (JSON) =====` divider, then the JSON document.
 
 ### Web Server
 
-`index.php` outputs a simple textarea to paste the PHP code into. Deobfuscated code is printed when the form is submitted
+`index.php` outputs a simple textarea to paste the PHP code into. Deobfuscated code is printed when the form is submitted. The optional `?analyze=text|json|both` query parameter appends a security-analysis report to the response (mirrors the CLI `-a`/`-j` flags).
+
+## Security analysis
+
+After deobfuscation, the optional analysis pass scans the deobfuscated AST and lists:
+
+- **Sources** — reads of attacker-controlled superglobals (`$_GET`, `$_POST`, `$_REQUEST`, `$_COOKIE`, `$_FILES`, `$_SERVER`, `$_ENV`, `$GLOBALS`) and pseudo-streams (`file_get_contents('php://input')`, etc.).
+- **Sinks** — calls to dangerous PHP primitives, grouped by category: `code_exec` (`eval`, `assert`, `preg_replace` with `/e`, …), `os_exec` (`system`, `exec`, backticks, …), `dynamic_inc` (`include`/`require` with non-literal arg), `dispatch` (variable function/method/`new`), `deser` (`unserialize`), `file_write` (`file_put_contents`, `unlink`, …), `network` (`curl_exec`, `fsockopen`, …), `mail`, `header_inj` (`header()` with non-literal arg), and `obfusc` (`base64_decode`, `gzinflate`, `pack`, …).
+- **Context** — every finding is tagged `auto-exec` (runs at script load) or `in-function:<qualified-name>` (only runs if that function is invoked).
+
+The analysis is a purely syntactic scan — it does not track data flow from sources to sinks. Use the report to find candidate lines worth reading; verify exploitability by hand.
 
 ## Examples
 
