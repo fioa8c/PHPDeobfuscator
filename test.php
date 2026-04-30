@@ -62,7 +62,8 @@ while ($testfile = readdir($d)) {
         $deobf->getFilesystem()->write($virtualPath, $code);
         $deobf->setCurrentFilename($virtualPath);
         try {
-            $out = $deobf->prettyPrint($deobf->deobfuscate($deobf->parse($code)));
+            $deobfTree = $deobf->deobfuscate($deobf->parse($code));
+            $out = $deobf->prettyPrint($deobfTree);
         } catch (\Exception | \Error $e) {
             echo "Test $name failed:\n";
             echo "Exception: " . $e->getMessage() . "\n";
@@ -76,7 +77,7 @@ while ($testfile = readdir($d)) {
         $analysisGot = null;
         if ($test['analysis'] !== null) {
             $analysisExpected = trim(implode('', $test['analysis']));
-            $findings = $deobf->analyze($out);
+            $findings = $deobf->analyze($out, $deobfTree);
             $formatter = new \PHPDeobfuscator\Analysis\ReportFormatter();
             $analysisGot = trim($formatter->formatFixture($findings));
             $analysisPass = ($analysisGot === $analysisExpected);
@@ -104,7 +105,7 @@ while ($testfile = readdir($d)) {
         $analysisTextGot = null;
         if (isset($test['analysis_text']) && $test['analysis_text'] !== null) {
             $analysisTextExpected = trim(implode('', $test['analysis_text']));
-            $findings = $deobf->analyze($out);
+            $findings = $deobf->analyze($out, $deobfTree);
             $formatter = new \PHPDeobfuscator\Analysis\ReportFormatter();
             $analysisTextGot = trim($formatter->formatText($findings));
             $analysisTextPass = ($analysisTextGot === $analysisTextExpected);
@@ -123,7 +124,7 @@ while ($testfile = readdir($d)) {
         $analysisJsonGot = null;
         if (isset($test['analysis_json']) && $test['analysis_json'] !== null) {
             $analysisJsonExpected = trim(implode('', $test['analysis_json']));
-            $findings = $deobf->analyze($out);
+            $findings = $deobf->analyze($out, $deobfTree);
             $formatter = new \PHPDeobfuscator\Analysis\ReportFormatter();
             $analysisJsonGot = trim($formatter->formatJson($findings));
             $expectedDecoded = json_decode($analysisJsonExpected, true);

@@ -33,7 +33,7 @@ if (php_sapi_name() == 'cli') {
     }
     if (isset($opts['a']) || isset($opts['j'])) {
         $deobf = new \PHPDeobfuscator\Deobfuscator();
-        $findings = $deobf->analyze($code);
+        $findings = $deobf->analyze($code, $tree);
         $formatter = new \PHPDeobfuscator\Analysis\ReportFormatter();
         if (isset($opts['a'])) {
             echo "\n" . $formatter->formatText($findings, basename($filename)) . "\n";
@@ -59,7 +59,7 @@ if (php_sapi_name() == 'cli') {
         if (isset($_GET['analyze'])) {
             $mode = $_GET['analyze'];
             $deobf = new \PHPDeobfuscator\Deobfuscator();
-            $findings = $deobf->analyze($code);
+            $findings = $deobf->analyze($code, $tree);
             $formatter = new \PHPDeobfuscator\Analysis\ReportFormatter();
             if ($mode === 'text' || $mode === 'both') {
                 echo "\n" . $formatter->formatText($findings, 'input.php') . "\n";

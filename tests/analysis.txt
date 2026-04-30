@@ -344,3 +344,20 @@ sources:
   in-function:{closure@line:9}  line 10  $_POST['x']
 sinks:
   in-function:{closure@line:9}  code_exec  line 10  eval
+
+INPUT
+$_GET['c'];
+eval(base64_decode("ZWNobyAnSGVsbG8gV29ybGQnOwo="));
+
+OUTPUT
+$_GET['c'];
+eval /* PHPDeobfuscator eval output */ {
+    echo "Hello World";
+};
+
+ANALYSIS
+sources:
+  auto-exec  line 2  $_GET['c']
+sinks:
+errors:
+  auto-exec  reparse_fallback  fell back to in-memory tree (line numbers may not match printed output)

@@ -99,21 +99,61 @@ class Deobfuscator
         }
     }
 
-    public function analyze(string $deobfuscatedCode): Analysis\Findings
+    public function analyze(string $deobfuscatedCode, ?array $fallbackTree = null): Analysis\Findings
     {
+        $tree = null;
+        $reparseError = null;
         try {
             $tree = $this->parser->parse($deobfuscatedCode);
             if ($tree === null) {
-                throw new \RuntimeException('analyze: parser returned null');
+                $reparseError = 'parser returned null';
             }
+        } catch (\Throwable $e) {
+            $reparseError = $e->getMessage();
+        }
+
+        if ($tree === null) {
+            // Re-parse failed (e.g. EvalBlock or other custom-printer output isn't
+            // valid PHP). Fall back to the in-memory deobfuscated tree if the
+            // caller provided one. Line numbers in findings will then come from
+            // the original-input parse rather than matching the printed output —
+            // best-effort, but better than dropping the analysis entirely.
+            if ($fallbackTree !== null) {
+                $tree = $fallbackTree;
+            } else {
+                error_log('PHPDeobfuscator analyze() re-parse error: ' . $reparseError);
+                $findings = new Analysis\Findings();
+                $findings->addSink(new Analysis\Finding(
+                    'meta',
+                    'analysis_aborted',
+                    $reparseError,
+                    0,
+                    'auto-exec'
+                ));
+                return $findings;
+            }
+        }
+
+        try {
             $visitor = new Analysis\SecurityAnalysisVisitor();
             $traverser = new \PhpParser\NodeTraverser();
             $traverser->addVisitor(new \PhpParser\NodeVisitor\ParentConnectingVisitor());
             $traverser->addVisitor($visitor);
             $traverser->traverse($tree);
-            return $visitor->getFindings();
+            $findings = $visitor->getFindings();
+            if ($reparseError !== null) {
+                error_log('PHPDeobfuscator analyze() re-parse fell back to in-memory tree: ' . $reparseError);
+                $findings->addSink(new Analysis\Finding(
+                    'meta',
+                    'reparse_fallback',
+                    'fell back to in-memory tree (line numbers may not match printed output)',
+                    0,
+                    'auto-exec'
+                ));
+            }
+            return $findings;
         } catch (\Throwable $e) {
-            error_log('PHPDeobfuscator analyze() error: ' . $e->getMessage());
+            error_log('PHPDeobfuscator analyze() traverse error: ' . $e->getMessage());
             $findings = new Analysis\Findings();
             $findings->addSink(new Analysis\Finding(
                 'meta',
