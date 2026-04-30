@@ -236,7 +236,7 @@ class FuncCallReducer extends AbstractReducer
             }
         }
         foreach ($func->params as $param) {
-            if ($param->variadic) {
+            if ($param->byRef || $param->variadic) {
                 return null;
             }
         }
