@@ -211,3 +211,13 @@ $b = 1 % 0;
 $c = "abc" * 2;
 $d = "xyz" + 1;
 
+
+INPUT
+
+$a = range("a", "c");
+echo $a[0] . $a[2];
+
+OUTPUT
+
+$a = array(0 => "a", 1 => "b", 2 => "c");
+echo "ac";
