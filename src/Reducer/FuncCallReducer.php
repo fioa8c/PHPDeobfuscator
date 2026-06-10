@@ -50,6 +50,12 @@ class FuncCallReducer extends AbstractReducer
                     return;
                 }
             }
+            // The resolved value must be a usable function name. A variable can
+            // hold an arbitrary string (e.g. 'echo 1;'); rewriting that into a
+            // call name would emit invalid code, so leave the call untouched.
+            if (!$this->isValidFunctionName($name)) {
+                return;
+            }
             $nameNode = new Node\Name($name);
             // Special case for MetadataVisitor
             $nameNode->setAttribute('replaces', $node->name);
@@ -57,6 +63,17 @@ class FuncCallReducer extends AbstractReducer
         }
         // Normalise to lowercase - function names are case insensitive
         return $this->makeFunctionCall(strtolower($name), $node);
+    }
+
+    /**
+     * Whether $name is a syntactically valid (optionally namespaced) PHP
+     * function name. Guards against rewriting a call when a variable callee
+     * resolved to a string that is not a real identifier.
+     */
+    private function isValidFunctionName($name): bool
+    {
+        return is_string($name)
+            && preg_match('/^\\\\?[a-zA-Z_\x80-\xff][a-zA-Z0-9_\x80-\xff]*(\\\\[a-zA-Z_\x80-\xff][a-zA-Z0-9_\x80-\xff]*)*$/', $name) === 1;
     }
 
     private function makeFunctionCall($name, $node)

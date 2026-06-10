@@ -164,7 +164,11 @@ class Resolver extends \PhpParser\NodeVisitorAbstract
             $this->onFuncCall($node);
         }
         if ($this->nodeCanBranch($node)) {
-            $this->setCurrentVarsMutable();
+            // After a branch/loop, only the variables it may have written are
+            // uncertain. Read-only variables - including global-imported ones
+            // that share their value object with the enclosing scope - keep
+            // their value (null => unanalysable => mark every variable mutable).
+            $this->setCurrentVarsMutable($this->branchMutatedNames($node));
         }
         return $retNode;
     }
@@ -189,6 +193,22 @@ class Resolver extends \PhpParser\NodeVisitorAbstract
      * variables, extract/parse_str) - in which case the caller must treat every
      * variable as mutable. See spec 2026-06-10-loop-invariant-resolution-design.
      */
+    /**
+     * Names of variables possibly written anywhere inside a branch/loop
+     * construct (its body and any nested branches/loops), or null if it
+     * contains an unanalysable mutation. Unlike loopMutatedNames this covers
+     * the whole subtree (e.g. a For_'s init too) and applies to If_/Switch_ -
+     * it is used on leave to decide which variables become uncertain afterward.
+     */
+    private function branchMutatedNames(Node $node): ?array
+    {
+        $names = array();
+        if (!$this->collectMutations($node, $names)) {
+            return null;
+        }
+        return array_values(array_unique($names));
+    }
+
     private function loopMutatedNames(Node $loop): ?array
     {
         $names = array();

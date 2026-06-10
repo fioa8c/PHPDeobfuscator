@@ -99,8 +99,8 @@ for ($i = 0; $i < 10; $i++) {
 }
 $a = array(1, 2, 3);
 $a[0] = $a[2];
-echo "{$b}" . "{$temp}" . "Array" . "{$i}" . "{$test}";
-echo "{$test}";
+echo "{$b}" . "{$temp}" . "Array" . "{$i}" . "abc";
+echo "abc";
 
 INPUT
 
@@ -266,3 +266,13 @@ foreach ([1, 2] as $x) {
     $f("a");
     extract($x);
 }
+
+INPUT
+
+$f = "echo 1;";
+$f();
+
+OUTPUT
+
+$f = "echo 1;";
+$f();
