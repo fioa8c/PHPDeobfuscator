@@ -18,13 +18,51 @@ function deobfuscate($code, $filename, $dumpOrig) {
     return array($tree, $newCode);
 }
 
+function usage() {
+    $script = basename($_SERVER['argv'][0] ?? 'index.php');
+    return <<<TXT
+PHP source-code deobfuscator.
+
+Usage:
+  php {$script} -f <file> [-t] [-o] [-a] [-j]
+  php {$script} -h
+
+Options:
+  -f <file>  File to deobfuscate (required).
+  -t         Dump the resulting node tree after the reduced source.
+  -o         Annotate each reduced expression with its original source.
+  -a         Append a security-analysis report in text form.
+  -j         Append a security-analysis report in JSON form.
+  -h         Show this help and exit.
+
+Examples:
+  php {$script} -f obfuscated.php
+  php {$script} -f obfuscated.php -o -a
+  php {$script} -f obfuscated.php -t -j
+
+TXT;
+}
+
 $nodeDumper = new PhpParser\NodeDumper();
 if (php_sapi_name() == 'cli') {
-    $opts = getopt('tof:aj');
+    $opts = getopt('tof:ajh');
+    // Explicit help, or run with no arguments at all: print usage to stdout, exit 0.
+    if (isset($opts['h']) || ($_SERVER['argc'] ?? 1) <= 1) {
+        echo usage();
+        exit(0);
+    }
+    // Invalid usage: missing or unreadable -f. Report to stderr, then usage, exit 1.
     if (!isset($opts['f'])) {
-        die("Missing required parameter -f\n");
+        fwrite(STDERR, "Error: missing required parameter -f\n\n");
+        fwrite(STDERR, usage());
+        exit(1);
     }
     $filename = $opts['f'];
+    if (!is_readable($filename)) {
+        fwrite(STDERR, "Error: cannot read file '{$filename}'\n\n");
+        fwrite(STDERR, usage());
+        exit(1);
+    }
     $orig = isset($opts['o']);
     list($tree, $code) = deobfuscate(file_get_contents($filename), $filename, $orig);
     echo $code, "\n";

@@ -10,7 +10,7 @@ PHP source-code deobfuscator that statically reduces obfuscated PHP by symbolica
 
 - Install deps: `composer install`
 - Run the test suite: `php test.php` (preferred: `php -d error_reporting=E_ALL test.php`). The script discovers every `tests/*.txt` file, runs each `INPUT`/`OUTPUT` block through the full pipeline, and prints `pass`/`failed` per case. There is no PHPUnit, no `--filter`; to run a single case temporarily edit `test.php` or move other test files aside.
-- Deobfuscate a file from CLI: `php index.php -f <file> [-t] [-o]` (`-t` dumps the resulting node tree; `-o` annotates each reduced expression with its original source).
+- Deobfuscate a file from CLI: `php index.php -f <file> [-t] [-o] [-a] [-j]` (`-t` dumps the resulting node tree; `-o` annotates each reduced expression with its original source; `-a`/`-j` append a security-analysis report in text/JSON). `-h`, or running with no args, prints usage; a missing/unreadable `-f` prints an error plus usage to stderr and exits non-zero (`usage()` lives in `index.php`).
 - Web entrypoint: `index.php` also serves a simple textarea form when accessed via SAPI.
 - Docker: `docker build -t phpdeobf . && docker run --rm phpdeobf` runs `php index.php` inside the container.
 
@@ -27,6 +27,10 @@ The deobfuscator is a two-pass AST rewrite around PHP-Parser. `Deobfuscator::deo
    - `MetadataVisitor` (only with `$annotateReductions`) annotates the printed output with the original code per reduction.
 
 `ExtendedPrettyPrinter` handles the fake nodes (`EvalBlock`, etc.) when emitting source.
+
+### Security analysis (`src/Analysis/`)
+
+A separate, optional pass invoked via `Deobfuscator::analyze()` (not part of `deobfuscate()`) — the CLI runs it on the *deobfuscated* code when `-a`/`-j` are passed, the web entrypoint via `?analyze=text|json|both`. `SecurityAnalysisVisitor` walks the tree producing `Finding`s collected into `Findings`; it is a purely syntactic scan with no source→sink data-flow tracking. `DangerousCatalog` is the lookup table classifying sinks by category (`code_exec`, `os_exec`, `dispatch`, `deser`, …) and recognising attacker-controlled sources (superglobals, `php://input`). Each finding is tagged `auto-exec` or `in-function:<name>` for execution context. `ReportFormatter` renders `Findings` as `formatText()` / `formatJson()`.
 
 ### Reducers
 
