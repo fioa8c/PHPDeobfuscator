@@ -2,6 +2,9 @@
 /vendor/
 /composer.lock
 
+# Local obfuscated sample inputs
+/samples/
+
 # Git worktrees
 /.worktrees/
 
