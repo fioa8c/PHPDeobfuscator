@@ -35,7 +35,7 @@ docker run --rm phpdeobf
 ### CLI
 
 ```
-php index.php [-f filename] [-t] [-o] [-a] [-j]
+php index.php [-f filename] [-t] [-o] [-a] [-j] [-c]
 
 required arguments:
 
@@ -47,7 +47,10 @@ optional arguments:
 -o    Output comments next to each expression with the original code
 -a    Append a security-analysis text report after the deobfuscated code
 -j    Append a security-analysis JSON report after the deobfuscated code
+-c    Strip all comments from the input (runs first, so -o/-a annotations remain)
 ```
+
+`-h`, or running with no arguments, prints usage.
 
 The deobfuscated output is printed to STDOUT. When `-a` and `-j` are combined, the text report is emitted first, then a `===== Analysis (JSON) =====` divider, then the JSON document.
 

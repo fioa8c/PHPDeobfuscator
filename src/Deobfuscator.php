@@ -10,6 +10,7 @@ class Deobfuscator
     private $parser;
     private $prettyPrinter;
 
+    private $commentStrip;
     private $firstPass;
     private $closurePrepass;
     private $secondPass;
@@ -19,10 +20,16 @@ class Deobfuscator
 
     private $metaVisitor;
 
-    public function __construct($dumpOrig = false, $annotateReductions = false)
+    public function __construct($dumpOrig = false, $annotateReductions = false, $stripComments = false)
     {
         $this->parser = (new \PhpParser\ParserFactory())->create(\PhpParser\ParserFactory::PREFER_PHP7);
         $this->prettyPrinter = new ExtendedPrettyPrinter();
+
+        $this->commentStrip = null;
+        if ($stripComments) {
+            $this->commentStrip = new \PhpParser\NodeTraverser;
+            $this->commentStrip->addVisitor(new CommentStripVisitor());
+        }
 
         $this->firstPass = new \PhpParser\NodeTraverser;
         $this->closurePrepass = new \PhpParser\NodeTraverser;
@@ -177,6 +184,11 @@ class Deobfuscator
 
     public function deobfuscate(array $tree)
     {
+        if ($this->commentStrip !== null) {
+            // Strip the input's comments before any pass so the -o / -a
+            // annotation comments, added downstream, are preserved.
+            $tree = $this->commentStrip->traverse($tree);
+        }
         $tree = $this->firstPass->traverse($tree);
         $tree = $this->closurePrepass->traverse($tree);
         $tree = $this->secondPass->traverse($tree);
