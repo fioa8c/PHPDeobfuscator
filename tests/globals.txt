@@ -73,3 +73,33 @@ $f = 'strrev';
 $g = function ($x) {
     return strrev($x);
 };
+
+INPUT
+
+$g = 'chr';
+function early($p) {
+    global $g;
+    if ($p) {
+        $q = 1;
+    }
+}
+function later() {
+    global $g;
+    return $g(102);
+}
+
+OUTPUT
+
+$g = 'chr';
+function early($p)
+{
+    global $g;
+    if ($p) {
+        $q = 1;
+    }
+}
+function later()
+{
+    global $g;
+    return "f";
+}

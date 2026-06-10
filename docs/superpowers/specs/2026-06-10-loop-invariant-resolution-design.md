@@ -89,3 +89,32 @@ Test-first via `tests/variables.txt`:
 - An `extract()` in the loop body suppresses reduction (safety fallback).
 
 Then confirm `samples/hidden.php`'s four calls resolve and `php test.php` stays green.
+
+## Addendum (2026-06-10): branch leave-side + function-name validation
+
+`samples/hidden2.php` exposed a second source of the same over-conservatism. A
+function holds a global function-name variable via `global $_uvbns;`. The import
+shares the *same* `ValRef` object with global scope, so when an **earlier**
+function contained any branch or loop, the leave-side `nodeCanBranch` blanket
+(`setCurrentVarsMutable()` with no args) marked that shared object mutable —
+poisoning the global for every **later** function (e.g. `tzaudx`).
+
+Fix, extending the selective approach to the leave side:
+- New `branchMutatedNames(Node)` runs `collectMutations` over the whole construct
+  (body + nested branches; for `For_` this includes `init`) and returns the
+  assigned names, or `null` (unanalysable → blanket fallback).
+- The `nodeCanBranch` leave-side now marks only those names mutable, for `If_` /
+  `Switch_` as well as loops. Read-only variables — including shared globals —
+  keep their value for code that follows.
+
+This also unmasked a latent reducer bug: `FuncCallReducer::reduceFunctionCall`
+built a `Name` node from *any* resolved callee string. A variable holding a
+non-identifier string (e.g. `'echo 1;'`) produced invalid output (`echo 1;()`).
+Added `isValidFunctionName()` — the call is left untouched unless the resolved
+value is a syntactically valid (optionally namespaced) function name.
+
+Net test-fixture changes: `variables.txt/6` now resolves the loop-invariant
+`$test` after its `for` loop (improvement); regression fixtures added for the
+cross-function global case (`globals.txt`) and the invalid-callee guard
+(`variables.txt`). `samples/hidden2.php`'s `tzaudx` now folds to
+`$wffbf = "affdacf9-e8a7-4e86-850f-6929de620301";`.
