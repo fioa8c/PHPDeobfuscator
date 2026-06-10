@@ -53,8 +53,10 @@ class Resolver extends \PhpParser\NodeVisitorAbstract
 
     public function enterNode(Node $node)
     {
-        if ($node->getAttribute('enterMutableContext')) {
-            $this->setCurrentVarsMutable();
+        $mutableContext = $node->getAttribute('enterMutableContext');
+        if ($mutableContext !== null) {
+            // true => mark every variable mutable; an array => only those names.
+            $this->setCurrentVarsMutable($mutableContext === true ? null : $mutableContext);
         }
         $this->updateNameScope($node, true);
         if ($this->changesScope($node)) {
@@ -83,26 +85,31 @@ class Resolver extends \PhpParser\NodeVisitorAbstract
         }
 
         if ($node instanceof Stmt\For_) {
-            // Everything except the init expression
-            $this->setNodesInMutableContext($node->cond);
-            $this->setNodesInMutableContext($node->loop);
-            $this->setNodesInMutableContext($node->stmts);
+            // Everything except the init expression. Only variables that the
+            // loop may reassign become mutable inside it; loop-invariant ones
+            // keep their value (see loopMutatedNames).
+            $names = $this->loopMutatedNames($node);
+            $this->setNodesInMutableContext($node->cond, $names);
+            $this->setNodesInMutableContext($node->loop, $names);
+            $this->setNodesInMutableContext($node->stmts, $names);
         }
         if ($node instanceof Stmt\Foreach_) {
-            $this->setNodesInMutableContext($node->stmts);
+            $this->setNodesInMutableContext($node->stmts, $this->loopMutatedNames($node));
         }
-        if ($node instanceof Stmt\While_
-            || $node instanceof Stmt\Do_
-            || $node instanceof Stmt\Case_
-            || $node instanceof Stmt\Label) {
+        if ($node instanceof Stmt\While_ || $node instanceof Stmt\Do_) {
+            $this->setCurrentVarsMutable($this->loopMutatedNames($node));
+        }
+        if ($node instanceof Stmt\Case_ || $node instanceof Stmt\Label) {
+            // Conditional execution: any variable might or might not be written.
             $this->setCurrentVarsMutable();
         }
     }
 
-    private function setNodesInMutableContext(array $nodes)
+    private function setNodesInMutableContext(array $nodes, ?array $names = null)
     {
         foreach ($nodes as $node) {
-            $node->setAttribute('enterMutableContext', true);
+            // true (null $names) => mark all mutable; an array => only those names.
+            $node->setAttribute('enterMutableContext', $names === null ? true : $names);
             return;
         }
     }
@@ -162,11 +169,186 @@ class Resolver extends \PhpParser\NodeVisitorAbstract
         return $retNode;
     }
 
-    private function setCurrentVarsMutable()
+    /**
+     * Mark variables in the current scope mutable. With $names === null every
+     * variable is marked (the conservative default); otherwise only the named
+     * ones are, leaving loop-invariant variables reducible.
+     */
+    private function setCurrentVarsMutable(?array $names = null)
     {
-        foreach ($this->scope->getVariables() as $var) {
-            $var->setMutable(true);
+        foreach ($this->scope->getVariables() as $name => $var) {
+            if ($names === null || in_array($name, $names, true)) {
+                $var->setMutable(true);
+            }
         }
+    }
+
+    /**
+     * Names of local variables that may be reassigned within one iteration of a
+     * loop, or null if the body contains an unanalysable mutation (variable
+     * variables, extract/parse_str) - in which case the caller must treat every
+     * variable as mutable. See spec 2026-06-10-loop-invariant-resolution-design.
+     */
+    private function loopMutatedNames(Node $loop): ?array
+    {
+        $names = array();
+        $roots = array();
+        if ($loop instanceof Stmt\Foreach_) {
+            foreach (array($loop->keyVar, $loop->valueVar) as $target) {
+                if ($target !== null && !$this->collectAssignTarget($target, $names)) {
+                    return null;
+                }
+            }
+            $roots = $loop->stmts;
+        } elseif ($loop instanceof Stmt\For_) {
+            $roots = array_merge($loop->cond, $loop->loop, $loop->stmts);
+        } elseif ($loop instanceof Stmt\While_) {
+            $roots = $loop->stmts;
+            $roots[] = $loop->cond;
+        } elseif ($loop instanceof Stmt\Do_) {
+            $roots = $loop->stmts;
+            $roots[] = $loop->cond;
+        } else {
+            return null;
+        }
+        foreach ($roots as $root) {
+            if ($root !== null && !$this->collectMutations($root, $names)) {
+                return null;
+            }
+        }
+        return array_values(array_unique($names));
+    }
+
+    /**
+     * Walk a subtree collecting the base names of assignment targets into
+     * $names. Returns false if an unanalysable mutation is found. Does not
+     * descend into nested function/closure/class bodies (separate scope), but
+     * records variables a closure captures by reference.
+     */
+    private function collectMutations(Node $node, array &$names): bool
+    {
+        if ($node instanceof Expr\Closure) {
+            foreach ($node->uses as $use) {
+                if ($use->byRef && is_string($use->var->name)) {
+                    $names[] = $use->var->name;
+                }
+            }
+            return true;
+        }
+        if ($node instanceof Expr\ArrowFunction
+            || $node instanceof Stmt\Function_
+            || $node instanceof Stmt\ClassMethod
+            || $node instanceof Stmt\ClassLike) {
+            return true;
+        }
+
+        if ($node instanceof Expr\Assign
+            || $node instanceof Expr\AssignRef
+            || $node instanceof Expr\AssignOp) {
+            if (!$this->collectAssignTarget($node->var, $names)) {
+                return false;
+            }
+            // Walk both sides for embedded assignments / unanalysable calls
+            // (e.g. assignments inside an array-dimension expression).
+            return $this->collectMutations($node->var, $names)
+                && $this->collectMutations($node->expr, $names);
+        }
+        if ($node instanceof Expr\PreInc || $node instanceof Expr\PreDec
+            || $node instanceof Expr\PostInc || $node instanceof Expr\PostDec) {
+            return $this->collectAssignTarget($node->var, $names);
+        }
+        if ($node instanceof Stmt\Unset_) {
+            foreach ($node->vars as $var) {
+                if (!$this->collectAssignTarget($var, $names)) {
+                    return false;
+                }
+            }
+            return true;
+        }
+        if ($node instanceof Stmt\Global_) {
+            foreach ($node->vars as $var) {
+                if (!($var instanceof Expr\Variable) || !is_string($var->name)) {
+                    return false;
+                }
+                $names[] = $var->name;
+            }
+            return true;
+        }
+        if ($node instanceof Stmt\Static_) {
+            foreach ($node->vars as $staticVar) {
+                if (!is_string($staticVar->var->name)) {
+                    return false;
+                }
+                $names[] = $staticVar->var->name;
+            }
+            return true;
+        }
+        if ($node instanceof Expr\FuncCall && $node->name instanceof Node\Name) {
+            $fn = strtolower($node->name->toString());
+            // These create arbitrary locals from runtime data we cannot see.
+            if ($fn === 'extract'
+                || (($fn === 'parse_str' || $fn === 'mb_parse_str') && count($node->args) < 2)) {
+                return false;
+            }
+        }
+        if ($node instanceof Stmt\Foreach_) {
+            // Nested-loop targets are reassigned each iteration too.
+            foreach (array($node->keyVar, $node->valueVar) as $target) {
+                if ($target !== null && !$this->collectAssignTarget($target, $names)) {
+                    return false;
+                }
+            }
+            // Fall through to walk the iterated expression and body.
+        }
+
+        foreach ($node->getSubNodeNames() as $subName) {
+            $sub = $node->$subName;
+            if ($sub instanceof Node) {
+                if (!$this->collectMutations($sub, $names)) {
+                    return false;
+                }
+            } elseif (is_array($sub)) {
+                foreach ($sub as $child) {
+                    if ($child instanceof Node && !$this->collectMutations($child, $names)) {
+                        return false;
+                    }
+                }
+            }
+        }
+        return true;
+    }
+
+    /**
+     * Record the base local variable name(s) written by an assignment target.
+     * Returns false if the target is unanalysable (variable-variable, dynamic
+     * property/name, or an unrecognised shape).
+     */
+    private function collectAssignTarget(Expr $target, array &$names): bool
+    {
+        if ($target instanceof Expr\Variable) {
+            if (!is_string($target->name)) {
+                return false; // $$x - variable variable
+            }
+            $names[] = $target->name;
+            return true;
+        }
+        if ($target instanceof Expr\ArrayDimFetch
+            || $target instanceof Expr\PropertyFetch
+            || $target instanceof Expr\NullsafePropertyFetch) {
+            return $this->collectAssignTarget($target->var, $names);
+        }
+        if ($target instanceof Expr\List_ || $target instanceof Expr\Array_) {
+            foreach ($target->items as $item) {
+                if ($item !== null && !$this->collectAssignTarget($item->value, $names)) {
+                    return false;
+                }
+            }
+            return true;
+        }
+        if ($target instanceof Expr\StaticPropertyFetch) {
+            return true; // class static, not a local variable
+        }
+        return false; // unknown target shape - be safe
     }
 
     private function changesScope(Node $node)
