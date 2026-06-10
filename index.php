@@ -6,8 +6,8 @@ ini_set('xdebug.var_display_max_depth', -1);
 ini_set('memory_limit', '512M');
 ini_set('xdebug.max_nesting_level', 1000);
 
-function deobfuscate($code, $filename, $dumpOrig) {
-    $deobf = new \PHPDeobfuscator\Deobfuscator($dumpOrig);
+function deobfuscate($code, $filename, $dumpOrig, $stripComments = false) {
+    $deobf = new \PHPDeobfuscator\Deobfuscator($dumpOrig, false, $stripComments);
     $cwd = '/var/www/html/';
     $virtualPath = $cwd . basename($filename);
     $deobf->getFilesystem()->write($virtualPath, $code);
@@ -24,12 +24,13 @@ function usage() {
 PHP source-code deobfuscator.
 
 Usage:
-  php {$script} -f <file> [-t] [-o] [-a] [-j]
+  php {$script} -f <file> [-t] [-o] [-a] [-j] [-c]
   php {$script} -h
 
 Options:
   -f <file>  File to deobfuscate (required).
   -t         Dump the resulting node tree after the reduced source.
+  -c         Strip all comments from the input.
   -o         Annotate each reduced expression with its original source.
   -a         Append a security-analysis report in text form.
   -j         Append a security-analysis report in JSON form.
@@ -45,7 +46,7 @@ TXT;
 
 $nodeDumper = new PhpParser\NodeDumper();
 if (php_sapi_name() == 'cli') {
-    $opts = getopt('tof:ajh');
+    $opts = getopt('tof:ajhc');
     // Explicit help, or run with no arguments at all: print usage to stdout, exit 0.
     if (isset($opts['h']) || ($_SERVER['argc'] ?? 1) <= 1) {
         echo usage();
@@ -64,7 +65,8 @@ if (php_sapi_name() == 'cli') {
         exit(1);
     }
     $orig = isset($opts['o']);
-    list($tree, $code) = deobfuscate(file_get_contents($filename), $filename, $orig);
+    $stripComments = isset($opts['c']);
+    list($tree, $code) = deobfuscate(file_get_contents($filename), $filename, $orig, $stripComments);
     echo $code, "\n";
     if (isset($opts['t'])) {
         echo $nodeDumper->dump($tree), "\n";
