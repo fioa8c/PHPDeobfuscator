@@ -25,6 +25,7 @@ class PassThrough implements FunctionReducer
             'implode',
             'intval',
             'ord',
+            'range',
             'rawurldecode',
             'sha1',
             'str_replace',
