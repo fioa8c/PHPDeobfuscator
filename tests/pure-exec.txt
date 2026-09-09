@@ -131,3 +131,37 @@ echo ramp();
 echo ramp();
 echo ramp();
 echo ramp();
+INPUT
+
+function d($s){ return @str_rot13(@base64_decode($s)); }
+echo d("dXJ5eWIgamJleXE=");
+
+OPTIONS
+
+execute-pure
+
+OUTPUT
+
+function d($s)
+{
+    return @str_rot13(@base64_decode($s));
+}
+echo "hello world";
+INPUT
+
+function e($s){ return @strlen(@file_get_contents($s)); }
+$x = e("secret.txt");
+echo $x;
+
+OPTIONS
+
+execute-pure
+
+OUTPUT
+
+function e($s)
+{
+    return @strlen(@file_get_contents($s));
+}
+$x = e("secret.txt");
+echo $x;

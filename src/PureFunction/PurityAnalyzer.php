@@ -47,7 +47,8 @@ class PurityAnalyzer
         // encoding
         'base64_decode', 'base64_encode', 'urldecode', 'urlencode', 'rawurldecode', 'rawurlencode',
         'json_decode', 'json_encode', 'serialize', 'gzinflate', 'gzuncompress', 'gzdecode',
-        'gzcompress', 'gzencode', 'quoted_printable_decode', 'quoted_printable_encode',
+        'gzcompress', 'gzencode', 'gzdeflate', 'quoted_printable_decode', 'quoted_printable_encode',
+        'pack', 'unpack', 'hash', 'crc32b', 'parse_url', 'basename', 'dirname', 'pathinfo',
         // array
         'array_chunk', 'array_combine', 'array_count_values', 'array_diff', 'array_diff_key',
         'array_fill', 'array_fill_keys', 'array_flip', 'array_intersect', 'array_intersect_key',
@@ -95,9 +96,27 @@ class PurityAnalyzer
     /**
      * True when $name and every user function it calls are safe to execute.
      */
+    /** Root-cause of the most recent rejection (first-wins), for diagnostics. */
+    private ?string $rejectReason = null;
+
+    public function lastRejection(): ?string
+    {
+        return $this->rejectReason;
+    }
+
+    /** Record a rejection reason (first one wins, i.e. the leaf cause) and return false. */
+    private function rej(string $code): bool
+    {
+        if ($this->rejectReason === null) {
+            $this->rejectReason = $code;
+        }
+        return false;
+    }
+
     public function isPure(string $name): bool
     {
         $this->dependencies = [];
+        $this->rejectReason = null;
         return $this->check($name);
     }
 
@@ -128,7 +147,7 @@ class PurityAnalyzer
         }
         $func = $this->resolver->getUserFunction($key);
         if ($func === null) {
-            return false;
+            return $this->rej('unknown-function');
         }
         $this->inProgress[$key] = true;
         try {
@@ -146,14 +165,14 @@ class PurityAnalyzer
     private function checkFunction(Stmt\Function_ $func): bool
     {
         if ($func->byRef) {
-            return false;
+            return $this->rej('byref-return-function');
         }
         foreach ($func->params as $param) {
             if ($param->byRef || $param->variadic) {
-                return false;
+                return $this->rej('byref-or-variadic-param');
             }
             if (!($param->var instanceof Expr\Variable) || !is_string($param->var->name)) {
-                return false;
+                return $this->rej('complex-param');
             }
             if ($param->default !== null && !$this->checkNode($param->default)) {
                 return false;
@@ -161,14 +180,17 @@ class PurityAnalyzer
         }
         $statics = $this->collectStaticNames($func);
         if ($statics === null) {
-            return false;
+            return $this->rej('malformed-static');
         }
         foreach ($func->stmts ?? [] as $stmt) {
             if (!$this->checkNode($stmt)) {
                 return false;
             }
         }
-        return $this->staticsOnlyLazyInitialised($func, $statics);
+        if (!$this->staticsOnlyLazyInitialised($func, $statics)) {
+            return $this->rej('static-not-lazy-init');
+        }
+        return true;
     }
 
     /**
@@ -361,34 +383,37 @@ class PurityAnalyzer
         // --- calls -------------------------------------------------------
         if ($node instanceof Expr\FuncCall) {
             if (!($node->name instanceof Node\Name)) {
-                return false; // dynamic call $f(...)
+                return $this->rej('dynamic-call'); // $f(...)
             }
             $fname = strtolower($node->name->toString());
             if (in_array($fname, self::CALLBACK_FUNCS, true)) {
-                return false;
+                return $this->rej('callback-func:' . $fname);
             }
             foreach ($node->args as $arg) {
                 if ($arg->unpack || $arg->byRef) {
-                    return false;
+                    return $this->rej('arg-unpack-or-byref');
                 }
             }
             if (!in_array($fname, self::PURE_BUILTINS, true)) {
                 // May still be a pure user function.
-                if ($this->resolver->getUserFunction($fname) === null || !$this->check($fname)) {
-                    return false;
+                if ($this->resolver->getUserFunction($fname) === null) {
+                    return $this->rej('non-pure-builtin:' . $fname);
+                }
+                if (!$this->check($fname)) {
+                    return false; // deeper reason already recorded
                 }
             } elseif ($fname === 'preg_replace' || $fname === 'preg_match'
                 || $fname === 'preg_match_all' || $fname === 'preg_split') {
                 // Reject the /e modifier and by-ref match outputs.
                 if (count($node->args) > 2 && ($fname === 'preg_match' || $fname === 'preg_match_all')) {
-                    return false;
+                    return $this->rej('preg-byref-matches');
                 }
                 $pat = $node->args[0]->value ?? null;
                 if (!($pat instanceof Node\Scalar\String_)) {
-                    return false;
+                    return $this->rej('preg-dynamic-pattern');
                 }
                 if (preg_match('/[a-zA-Z]*e[a-zA-Z]*$/', substr($pat->value, (int) strrpos($pat->value, $pat->value[0] ?? '/')))) {
-                    return false;
+                    return $this->rej('preg-e-modifier');
                 }
             }
             return $this->checkNode($node->args);
@@ -401,7 +426,7 @@ class PurityAnalyzer
             Expr\StaticPropertyFetch::class, Expr\Clone_::class, Expr\Eval_::class,
             Expr\Include_::class, Expr\ShellExec::class, Expr\Exit_::class, Expr\Print_::class,
             Expr\Closure::class, Expr\ArrowFunction::class, Expr\Yield_::class, Expr\YieldFrom::class,
-            Expr\AssignRef::class, Expr\ErrorSuppress::class, Expr\Throw_::class,
+            Expr\AssignRef::class, Expr\Throw_::class,
             Expr\ClassConstFetch::class, Expr\Instanceof_::class, Expr\List_::class,
             Stmt\Echo_::class, Stmt\Global_::class, Stmt\Unset_::class, Stmt\Goto_::class,
             Stmt\Label::class, Stmt\InlineHTML::class, Stmt\Function_::class, Stmt\Class_::class,
@@ -411,16 +436,19 @@ class PurityAnalyzer
         ];
         foreach ($forbidden as $class) {
             if ($node instanceof $class) {
-                return false;
+                return $this->rej('forbidden:' . (new \ReflectionClass($node))->getShortName());
             }
         }
 
         // --- variables ---------------------------------------------------
         if ($node instanceof Expr\Variable) {
             if (!is_string($node->name)) {
-                return false; // $$dynamic
+                return $this->rej('variable-variable'); // $$dynamic
             }
-            return !in_array($node->name, self::SUPERGLOBALS, true);
+            if (in_array($node->name, self::SUPERGLOBALS, true)) {
+                return $this->rej('superglobal:$' . $node->name);
+            }
+            return true;
         }
 
         // --- constants ---------------------------------------------------
@@ -441,7 +469,7 @@ class PurityAnalyzer
             Expr\UnaryPlus::class, Expr\BooleanNot::class, Expr\BitwiseNot::class,
             Expr\PreInc::class, Expr\PreDec::class, Expr\PostInc::class, Expr\PostDec::class,
             Expr\Ternary::class, Expr\Isset_::class, Expr\Empty_::class, Expr\Match_::class,
-            Node\MatchArm::class,
+            Node\MatchArm::class, Expr\ErrorSuppress::class,
             Expr\Cast\Int_::class, Expr\Cast\Double::class, Expr\Cast\String_::class,
             Expr\Cast\Bool_::class, Expr\Cast\Array_::class,
             Stmt\Expression::class, Stmt\Return_::class, Stmt\If_::class, Stmt\ElseIf_::class,
@@ -457,11 +485,11 @@ class PurityAnalyzer
             }
         }
         if (!$isAllowed) {
-            return false;
+            return $this->rej('unhandled:' . (new \ReflectionClass($node))->getShortName());
         }
 
         if ($node instanceof Stmt\Foreach_ && $node->byRef) {
-            return false;
+            return $this->rej('foreach-byref');
         }
 
         foreach ($node->getSubNodeNames() as $sub) {
