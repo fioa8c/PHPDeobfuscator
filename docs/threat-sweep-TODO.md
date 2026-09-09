@@ -2,6 +2,16 @@
 
 ## Fixed this session
 
+- **Token-aware scorer (`bin/lib/obfscore.php`, item 9)** — structural signals
+  (bitwise-string ops, dynamic calls, dangerous calls, goto) are now measured
+  over a code-only rendering (string literals collapsed to empty quotes,
+  comments dropped via `token_get_all`), while payload signals (base64/hex runs,
+  \xNN) are measured over string contents. Shell commands like
+  `system("a | b")` and URLs like `'&url='` no longer register as bitwise
+  operators, so benign files stop being mis-tiered HEAVY, while the real
+  bitwise-string backdoor family is preserved. Falls back to raw on a
+  tokenizer failure.
+
 - **Eval-hook peeling (`-e`, `src/EvalHook/EvalPeeler.php`)** — nested `eval()`
   chains are now unpacked dynamically in a hardened php-eval-hook sandbox and
   each layer statically cleaned. b374k unpacks to readable source (8 layers);
@@ -192,7 +202,7 @@ XOR decoders keyed by `$_SERVER['HTTP_USER_AGENT']`
 (`sample-dump/bendigital2019_01540/…`). The security analysis pass should
 flag "eval of data keyed by request/remote input" explicitly.
 
-### 9. Scorer precision (tooling only)
+### 9. Scorer precision (tooling only) — DONE
 `bitops`/`dyncalls` regexes match inside string literals (`system("… | grep")`,
 `'&url='`). Switch `bin/lib/obfscore.php` to `token_get_all`.
 
