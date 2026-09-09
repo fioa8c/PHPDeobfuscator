@@ -14,6 +14,10 @@ class Utils
 {
     public static function scalarToNode($value, $attrs = array())
     {
+        if (is_object($value) || is_resource($value)) {
+            // Reducers catch BadValueException and leave the node untouched.
+            throw new Exceptions\UnknownValueException("Cannot represent value as a literal node");
+        }
         if (!is_array($value)) { // Do this for arrays later
             $attrs[AttrName::VALUE] = new ScalarValue($value);
         }
@@ -44,7 +48,40 @@ class Utils
             $attrs[AttrName::VALUE] = new ArrayVal($valArray);
             return new Node\Expr\Array_($items, $attrs);
         }
-        throw new \Exception("Unknown value type");
+        throw new Exceptions\UnknownValueException("Unknown value type");
+    }
+
+    /**
+     * Deep-clones a node (or list of nodes) and drops every attribute this
+     * pipeline attached to it, so the copy can be re-analysed from scratch as
+     * if it had just been parsed. Parser-level attributes (positions, string
+     * kind, comments) are kept - the printer needs them.
+     *
+     * @param Node|Node[] $ast
+     * @return Node|Node[]
+     */
+    public static function cloneAst($ast)
+    {
+        static $traverser = null;
+        if ($traverser === null) {
+            $traverser = new \PhpParser\NodeTraverser();
+            $traverser->addVisitor(new \PhpParser\NodeVisitor\CloningVisitor());
+            $traverser->addVisitor(new class extends \PhpParser\NodeVisitorAbstract {
+                private const KEEP = [
+                    'comments' => true, 'kind' => true, 'docLabel' => true, 'docIndentation' => true,
+                    'rawValue' => true, 'startLine' => true, 'endLine' => true, 'startTokenPos' => true,
+                    'endTokenPos' => true, 'startFilePos' => true, 'endFilePos' => true,
+                ];
+                public function leaveNode(Node $node)
+                {
+                    $node->setAttributes(array_intersect_key($node->getAttributes(), self::KEEP));
+                    return null;
+                }
+            });
+        }
+        $isList = is_array($ast);
+        $out = $traverser->traverse($isList ? $ast : [$ast]);
+        return $isList ? $out : $out[0];
     }
 
     public static function getValueRef(Node $node)
@@ -72,9 +109,13 @@ class Utils
 
     public static function safeFileExists(Filesystem $fileSystem, $path)
     {
+        if (!is_string($path) || $path === '' || strpos($path, "\0") !== false) {
+            return false;
+        }
         try {
             return $fileSystem->fileExists($path);
-        } catch (PathTraversalDetected $e) {
+        } catch (\League\Flysystem\FilesystemException | \InvalidArgumentException | \ValueError $e) {
+            // PathTraversalDetected, CorruptedPathDetected, UnableToCheckExistence, ...
             return false;
         }
     }

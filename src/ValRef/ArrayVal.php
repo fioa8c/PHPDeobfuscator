@@ -55,10 +55,21 @@ class ArrayVal extends AbstractValRef
 
     public function __toString()
     {
-        $arr = $this->backingArray();
-        return 'Array(' . implode(', ', array_map(function ($key) use (&$arr) {
-            return "$key => " . $arr[$key];
-        }, array_keys($arr))) . ')';
+        // Arrays can contain references to themselves; this is only used for
+        // diagnostics, so cut the recursion short rather than overflow the stack.
+        static $depth = 0;
+        if ($depth >= 3) {
+            return 'Array(...)';
+        }
+        $depth++;
+        try {
+            $arr = $this->backingArray();
+            return 'Array(' . implode(', ', array_map(function ($key) use (&$arr) {
+                return "$key => " . $arr[$key];
+            }, array_keys($arr))) . ')';
+        } finally {
+            $depth--;
+        }
     }
 
     public function __clone()

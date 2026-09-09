@@ -44,7 +44,11 @@ class EvalReducer extends AbstractReducer
         if (!Utils::safeFileExists($fileSystem, $file)) {
             return;
         }
-        $code = $fileSystem->read($file);
+        try {
+            $code = $fileSystem->read($file);
+        } catch (\League\Flysystem\FilesystemException $e) {
+            return;
+        }
         return $this->tryRunEval($code);
     }
 
@@ -105,6 +109,23 @@ class EvalReducer extends AbstractReducer
     private function deobfTree($tree)
     {
         return $this->deobfuscator->deobfuscate($tree);
+    }
+
+    /**
+     * Like runEvalTree() but for statements that were built in memory (e.g. a
+     * cloned function body) - skips the print/parse round trip.
+     */
+    public function runEvalStmts(array $stmts)
+    {
+        if ($this->depth >= self::MAX_DEPTH) {
+            return [];
+        }
+        $this->depth++;
+        try {
+            return $this->deobfTree($stmts);
+        } finally {
+            $this->depth--;
+        }
     }
 
     public function runEvalTree($code)

@@ -29,6 +29,8 @@ class Resolver extends \PhpParser\NodeVisitorAbstract
 
     /** @var array<string, \PhpParser\Node\Stmt\Function_> */
     private array $userFunctions = [];
+    /** Bumped on every registerUserFunction(); lets callers invalidate memoized inlining results. */
+    private int $userFunctionVersion = 0;
 
     public function __construct()
     {
@@ -81,7 +83,9 @@ class Resolver extends \PhpParser\NodeVisitorAbstract
         // Transform AssignOp into the longer form BinaryOp
         if ($node instanceof Expr\AssignOp) {
             $op = str_replace('AssignOp', 'BinaryOp', get_class($node));
-            return new Expr\Assign($node->var, new $op($node->var, $node->expr));
+            $binOp = new $op($node->var, $node->expr);
+            $binOp->setAttribute(AttrName::SELF_ASSIGN, true);
+            return new Expr\Assign($node->var, $binOp);
         }
 
         if ($node instanceof Stmt\For_) {
@@ -131,6 +135,27 @@ class Resolver extends \PhpParser\NodeVisitorAbstract
         if ($this->changesScope($node)) {
             $this->leaveScope();
         }
+        try {
+            $retNode = $this->trackNode($node);
+        } catch (Exceptions\BadValueException | \TypeError | \ValueError | \InvalidArgumentException $e) {
+            // Value tracking hit something it cannot model. Losing precision is
+            // acceptable; aborting the deobfuscation of the whole file is not.
+            $this->setCurrentVarsMutable();
+        }
+        if ($this->nodeCanBranch($node)) {
+            // After a branch/loop, only the variables it may have written are
+            // uncertain. Read-only variables - including global-imported ones
+            // that share their value object with the enclosing scope - keep
+            // their value (null => unanalysable => mark every variable mutable).
+            $this->setCurrentVarsMutable($this->branchMutatedNames($node));
+        }
+        return $retNode;
+    }
+
+    /** Scope/value bookkeeping for a node on the way out; may return a replacement node. */
+    private function trackNode(Node $node)
+    {
+        $retNode = null;
         if ($node instanceof Expr\Assign) {
             $this->onAssign($node);
             // Try to transform BinaryOp back into AssignOp
@@ -162,13 +187,6 @@ class Resolver extends \PhpParser\NodeVisitorAbstract
         }
         if ($node instanceof Expr\FuncCall) {
             $this->onFuncCall($node);
-        }
-        if ($this->nodeCanBranch($node)) {
-            // After a branch/loop, only the variables it may have written are
-            // uncertain. Read-only variables - including global-imported ones
-            // that share their value object with the enclosing scope - keep
-            // their value (null => unanalysable => mark every variable mutable).
-            $this->setCurrentVarsMutable($this->branchMutatedNames($node));
         }
         return $retNode;
     }
@@ -246,6 +264,38 @@ class Resolver extends \PhpParser\NodeVisitorAbstract
      * records variables a closure captures by reference.
      */
     private function collectMutations(Node $node, array &$names): bool
+    {
+        // Every enclosing branch re-walks its subtree on leave; without a cache
+        // that is O(n * nesting) over a 500 KB webshell. The cache is only
+        // ever a superset of the truth (reductions remove writes), so it is
+        // safe to keep across the reducer's rewrites.
+        $cached = $node->getAttribute(AttrName::MUTATED_NAMES);
+        if ($cached !== null) {
+            if ($cached === false) {
+                return false;
+            }
+            foreach ($cached as $n) {
+                $names[] = $n;
+            }
+            return true;
+        }
+        if (!$this->nodeCanBranch($node)) {
+            return $this->collectMutationsUncached($node, $names);
+        }
+        $local = array();
+        $ok = $this->collectMutationsUncached($node, $local);
+        $local = array_values(array_unique($local));
+        $node->setAttribute(AttrName::MUTATED_NAMES, $ok ? $local : false);
+        if (!$ok) {
+            return false;
+        }
+        foreach ($local as $n) {
+            $names[] = $n;
+        }
+        return true;
+    }
+
+    private function collectMutationsUncached(Node $node, array &$names): bool
     {
         if ($node instanceof Expr\Closure) {
             foreach ($node->uses as $use) {
@@ -460,8 +510,39 @@ class Resolver extends \PhpParser\NodeVisitorAbstract
         if (isset($this->constants[$name])) {
             return new ScalarValue($this->constants[$name]);
         }
-        // PHP assumes a string of the name of the constant
+        // A defined PHP builtin (E_ALL, PHP_EOL, DIRECTORY_SEPARATOR, ...) has a
+        // stable real value - use it so `error_reporting(E_ERROR | E_WARNING)`
+        // folds to an int rather than garbage.
+        $bare = ltrim($name, '\\');
+        if (defined($bare) && !$this->isHostConstant($bare)) {
+            $value = constant($bare);
+            if (is_scalar($value) || $value === null) {
+                return new ScalarValue($value);
+            }
+        }
+        // Otherwise the constant is either a host-app constant (ABSPATH,
+        // DB_HOST) or, far more often in obfuscated malware, a bareword the
+        // sample relies on PHP 5/7 resolving to a string of its own name -
+        // that string is the actual input to `'x' ^ Gsb9Nw` style decoders.
+        // Keeping the name-as-string fallback is what makes those decode.
         return new ScalarValue($name);
+    }
+
+    /**
+     * True for constants that exist in this deobfuscator's own PHP process but
+     * mean something different (or nothing) in the analysed sample's host, so
+     * their local value must not be substituted.
+     */
+    private function isHostConstant(string $name): bool
+    {
+        // Path/PHP-build constants leak this machine's paths into the output.
+        static $host = [
+            'PHP_BINARY' => true, 'PHP_BINDIR' => true, '__DIR__' => true, '__FILE__' => true,
+            'DEFAULT_INCLUDE_PATH' => true, 'PHP_CONFIG_FILE_PATH' => true, 'PHP_CONFIG_FILE_SCAN_DIR' => true,
+            'PHP_EXTENSION_DIR' => true, 'PHP_PREFIX' => true, 'PHP_SYSCONFDIR' => true, 'PHP_LOCALSTATEDIR' => true,
+            'PHP_DATADIR' => true, 'PHP_LIBDIR' => true, 'PHP_MANDIR' => true, 'PHP_SAPI' => true,
+        ];
+        return isset($host[$name]);
     }
 
     public function getCurrentScope()
@@ -488,6 +569,12 @@ class Resolver extends \PhpParser\NodeVisitorAbstract
     {
         // PHP function names are case-insensitive; normalise to lowercase.
         $this->userFunctions[strtolower($name)] = $func;
+        $this->userFunctionVersion++;
+    }
+
+    public function getUserFunctionVersion(): int
+    {
+        return $this->userFunctionVersion;
     }
 
     public function getUserFunction(string $name): ?Stmt\Function_
@@ -611,8 +698,12 @@ class Resolver extends \PhpParser\NodeVisitorAbstract
     {
         $didAssign = false;
         if ($val !== null) {
+            $hops = 0;
             while (($oldValue = $var->getValue($this->scope)) instanceof ByReference) {
                 $var = $oldValue->getVariable();
+                if (++$hops > 32) {
+                    throw new Exceptions\UnknownValueException("Reference cycle");
+                }
             }
             $didAssign = $var->assignValue($this->scope, $val);
         }
