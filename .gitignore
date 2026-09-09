@@ -13,3 +13,9 @@
 
 .htaccess
 
+# Threat sweep reports
+/report/
+/out/
+
+# Stray downloaded archive
+/mago-*.tar.gz
