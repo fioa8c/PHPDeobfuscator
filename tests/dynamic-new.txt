@@ -1,0 +1,29 @@
+INPUT
+
+$c = "ZipArchive";
+$z = new $c();
+
+OUTPUT
+
+$c = "ZipArchive";
+$z = new ZipArchive();
+
+INPUT
+
+$c = "Zip Archive!";
+$z = new $c();
+
+OUTPUT
+
+$c = "Zip Archive!";
+$z = new $c();
+
+INPUT
+
+$c = $_GET["c"];
+$z = new $c();
+
+OUTPUT
+
+$c = $_GET["c"];
+$z = new $c();

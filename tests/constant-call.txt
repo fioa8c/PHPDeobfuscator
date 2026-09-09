@@ -1,0 +1,33 @@
+INPUT
+
+echo pathinfo($p, constant("PATHINFO_EXTENSION"));
+
+OUTPUT
+
+echo pathinfo($p, PATHINFO_EXTENSION);
+
+INPUT
+
+$n = "PATHINFO_EXTENSION";
+echo constant($n);
+
+OUTPUT
+
+$n = "PATHINFO_EXTENSION";
+echo PATHINFO_EXTENSION;
+
+INPUT
+
+echo constant("not a constant!");
+
+OUTPUT
+
+echo constant("not a constant!");
+
+INPUT
+
+echo constant($_GET["c"]);
+
+OUTPUT
+
+echo constant($_GET["c"]);

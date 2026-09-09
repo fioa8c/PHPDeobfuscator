@@ -221,3 +221,27 @@ OUTPUT
 
 $a = array(0 => "a", 1 => "b", 2 => "c");
 echo "ac";
+
+INPUT
+
+function g($x) { return f($x) . "!"; }
+echo g(1);
+eval('function f($x) { return $x + 1; }');
+echo g(1);
+echo g(1);
+
+OUTPUT
+
+function g($x)
+{
+    return f($x) . "!";
+}
+echo g(1);
+eval /* PHPDeobfuscator eval output */ {
+    function f($x)
+    {
+        return $x + 1;
+    }
+};
+echo "2!";
+echo "2!";
