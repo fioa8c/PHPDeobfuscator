@@ -215,3 +215,78 @@ function j(...$parts)
     return implode("-", $parts);
 }
 echo "a-b-c";
+INPUT
+
+function dec($codes){ return implode("", array_map(function($c){ return chr($c); }, $codes)); }
+echo dec(array(104, 105, 33));
+
+OPTIONS
+
+execute-pure
+
+OUTPUT
+
+function dec($codes)
+{
+    return implode("", array_map(function ($c) {
+        return chr($c);
+    }, $codes));
+}
+echo "hi!";
+INPUT
+
+function dec2($codes){ return implode("", array_map(fn($c) => chr($c ^ 1), $codes)); }
+echo dec2(array(105, 104, 32));
+
+OPTIONS
+
+execute-pure
+
+OUTPUT
+
+function dec2($codes)
+{
+    return implode("", array_map(fn($c) => chr($c ^ 1), $codes));
+}
+echo "hi!";
+INPUT
+
+function bad($a){ return array_map(function($c){ echo $c; return $c; }, $a); }
+$x = bad(array(1, 2));
+echo count($x);
+
+OPTIONS
+
+execute-pure
+
+OUTPUT
+
+function bad($a)
+{
+    return array_map(function ($c) {
+        echo $c;
+        return $c;
+    }, $a);
+}
+$x = bad(array(1, 2));
+echo count($x);
+INPUT
+
+function refbad($a){ $t=0; array_map(function($c) use (&$t){ $t+=$c; }, $a); return $t; }
+echo refbad(array(1, 2, 3));
+
+OPTIONS
+
+execute-pure
+
+OUTPUT
+
+function refbad($a)
+{
+    $t = 0;
+    array_map(function ($c) use(&$t) {
+        $t += $c;
+    }, $a);
+    return $t;
+}
+echo refbad(array(1, 2, 3));
