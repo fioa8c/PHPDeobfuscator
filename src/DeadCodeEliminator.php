@@ -5,9 +5,15 @@ namespace PHPDeobfuscator;
 use PhpParser\Node;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Stmt;
+use PhpParser\NodeTraverser;
+use PHPDeobfuscator\PureFunction\PurityAnalyzer;
 
 /**
- * Removes assignments to variables that are never read (`-u`).
+ * Removes dead code the reduced program no longer uses (`-u`): assignments to
+ * variables that are never read, and uncalled *pure* functions (decoder
+ * scaffolding left after inlining). An uncalled function is removed only when
+ * PurityAnalyzer proves it pure, so an unreferenced *impure* function - a
+ * possible dormant payload - is kept for the security-analysis pass to see.
  *
  * After the reducer inlines a decoder's output, the scaffolding is left behind:
  * `$q = "<base64 blob>";`, FOPO ladders (`$x = "b"; $x = "ba"; …`), and a
@@ -47,7 +53,150 @@ class DeadCodeEliminator
 
     public function run(array $stmts): array
     {
-        return $this->processScope($stmts, []);
+        $stmts = $this->processScope($stmts, []);
+        $stmts = $this->removeDeadFunctions($stmts);
+        return $stmts;
+    }
+
+    /**
+     * Remove top-level (and namespace-level) function definitions whose name is
+     * never referenced anywhere - decoder functions left behind after their
+     * calls were inlined. Abandoned entirely if the file dispatches
+     * dynamically (a variable function, $$, or call_user_func / create_function
+     * with a computed callable, function_exists / is_callable introspection),
+     * since then a function could be reached by a name we cannot see. A name
+     * appearing as a plain string literal also counts as a use (it may be a
+     * callable). Iterated to a fixpoint: removing one function can free another.
+     *
+     * @param Stmt[] $stmts
+     * @return Stmt[]
+     */
+    private function removeDeadFunctions(array $stmts): array
+    {
+        if ($this->hasDynamicDispatchHazard($stmts)) {
+            return $stmts;
+        }
+        // Only pure functions are safe to drop: an uncalled *impure* function
+        // may be a dormant payload the analyst (and the -a security pass) needs
+        // to see, so it is kept. A pure decoder left over after inlining has no
+        // sink or side effect and only adds noise.
+        $resolver = new Resolver();
+        try {
+            $reg = new NodeTraverser();
+            $reg->addVisitor(new ClosureRegistryPrepass($resolver));
+            $reg->addVisitor(new UserFunctionPrepass($resolver));
+            $reg->traverse($stmts);
+            $purity = new PurityAnalyzer($resolver);
+        } catch (\Throwable $e) {
+            return $stmts; // if we cannot build the purity oracle, remove nothing
+        }
+        do {
+            $used = [];
+            foreach ($stmts as $s) {
+                $this->collectFunctionUses($s, $used);
+            }
+            $changed = $this->stripDeadFunctions($stmts, $used, $purity);
+        } while ($changed);
+        return $stmts;
+    }
+
+    /** Drop dead Stmt\Function_ from $stmts and any namespace blocks within it. */
+    private function stripDeadFunctions(array &$stmts, array $used, PurityAnalyzer $purity): bool
+    {
+        $changed = false;
+        $kept = [];
+        foreach ($stmts as $s) {
+            if ($s instanceof Stmt\Function_
+                && !isset($used[strtolower($s->name->toString())])
+                && $this->isRemovablePureFunction($s, $purity)) {
+                $changed = true;
+                continue;
+            }
+            if ($s instanceof Stmt\Namespace_ && is_array($s->stmts)) {
+                if ($this->stripDeadFunctions($s->stmts, $used, $purity)) {
+                    $changed = true;
+                }
+            }
+            $kept[] = $s;
+        }
+        $stmts = $kept;
+        return $changed;
+    }
+
+    private function isRemovablePureFunction(Stmt\Function_ $fn, PurityAnalyzer $purity): bool
+    {
+        try {
+            return $purity->isPure($fn->name->toString());
+        } catch (\Throwable $e) {
+            return false;
+        }
+    }
+
+    /** Record every function name referenced as a call or a bare string literal. */
+    private function collectFunctionUses($node, array &$used): void
+    {
+        if (is_array($node)) {
+            foreach ($node as $c) {
+                $this->collectFunctionUses($c, $used);
+            }
+            return;
+        }
+        if (!($node instanceof Node)) {
+            return;
+        }
+        if ($node instanceof Expr\FuncCall && $node->name instanceof Node\Name) {
+            $used[strtolower(ltrim($node->name->toString(), '\\'))] = true;
+        }
+        if ($node instanceof Node\Scalar\String_) {
+            $used[strtolower(ltrim($node->value, '\\'))] = true;
+        }
+        foreach ($node->getSubNodeNames() as $sub) {
+            $this->collectFunctionUses($node->$sub, $used);
+        }
+    }
+
+    /** True if the file can call a function by a name that is not statically visible. */
+    private function hasDynamicDispatchHazard($node): bool
+    {
+        if (is_array($node)) {
+            foreach ($node as $c) {
+                if ($this->hasDynamicDispatchHazard($c)) {
+                    return true;
+                }
+            }
+            return false;
+        }
+        if (!($node instanceof Node)) {
+            return false;
+        }
+        if ($node instanceof Expr\Variable && !is_string($node->name)) {
+            return true; // $$x
+        }
+        if ($node instanceof Expr\FuncCall) {
+            if (!($node->name instanceof Node\Name)) {
+                return true; // $f(...)
+            }
+            $fn = strtolower($node->name->toString());
+            static $introspect = ['function_exists', 'is_callable', 'method_exists', 'get_defined_functions'];
+            if (in_array($fn, $introspect, true)) {
+                return true;
+            }
+            static $dispatch = ['call_user_func', 'call_user_func_array', 'forward_static_call',
+                'forward_static_call_array', 'create_function', 'register_shutdown_function',
+                'register_tick_function', 'set_error_handler', 'set_exception_handler', 'spl_autoload_register'];
+            if (in_array($fn, $dispatch, true)) {
+                $first = $node->args[0]->value ?? null;
+                if (!($first instanceof Node\Scalar\String_)) {
+                    return true; // computed callable
+                }
+            }
+        }
+        foreach ($node->getSubNodeNames() as $sub) {
+            if ($this->hasDynamicDispatchHazard($node->$sub)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /**

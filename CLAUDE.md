@@ -10,7 +10,7 @@ PHP source-code deobfuscator that statically reduces obfuscated PHP by symbolica
 
 - Install deps: `composer install`
 - Run the test suite: `php test.php` (preferred: `php -d error_reporting=E_ALL test.php`). The script discovers every `tests/*.txt` file, runs each `INPUT`/`OUTPUT` block through the full pipeline, and prints `pass`/`failed` per case. There is no PHPUnit, no `--filter`; to run a single case temporarily edit `test.php` or move other test files aside.
-- Deobfuscate a file from CLI: `php index.php -f <file> [-t] [-o] [-a] [-j] [-c] [-x] [-e] [-u]` (`-t` dumps the resulting node tree; `-o` annotates each reduced expression with its original source; `-a`/`-j` append a security-analysis report in text/JSON; `-c` strips the input's comments, running before any pass so `-o`/`-a` annotations are preserved; `-x` enables sandboxed execution of provably pure user functions — see **Pure-function execution** below; `-e` dynamically peels nested `eval()` layers by running the sample under the php-eval-hook extension — see **Eval-hook peeling** below; `-u` removes assignments to variables the reduced code never reads — see **Dead-store elimination** below). `-h`, or running with no args, prints usage; a missing/unreadable `-f` prints an error plus usage to stderr and exits non-zero (`usage()` lives in `index.php`).
+- Deobfuscate a file from CLI: `php index.php -f <file> [-t] [-o] [-a] [-j] [-c] [-x] [-e] [-u]` (`-t` dumps the resulting node tree; `-o` annotates each reduced expression with its original source; `-a`/`-j` append a security-analysis report in text/JSON; `-c` strips the input's comments, running before any pass so `-o`/`-a` annotations are preserved; `-x` enables sandboxed execution of provably pure user functions — see **Pure-function execution** below; `-e` dynamically peels nested `eval()` layers by running the sample under the php-eval-hook extension — see **Eval-hook peeling** below; `-u` removes dead code the reduced program no longer uses — see **Dead-code elimination** below). `-h`, or running with no args, prints usage; a missing/unreadable `-f` prints an error plus usage to stderr and exits non-zero (`usage()` lives in `index.php`).
 - Web entrypoint: `index.php` also serves a simple textarea form when accessed via SAPI.
 - Docker: `docker build -t phpdeobf . && docker run --rm phpdeobf` runs `php index.php` inside the container.
 
@@ -42,13 +42,13 @@ Off by default; enabled by `Deobfuscator::__construct(..., $executePureFunctions
 - `PureFunctionExecutor` runs approved functions in a persistent `php -n` subprocess with `disable_functions` covering process/filesystem/network/environment access, `open_basedir` confined to a throwaway worker dir, memory and execution-time caps, and a wall-clock timeout. Definitions are sent **per function** (not per dependency set) because sets overlap and re-`eval`ing a defined function is an uncatchable redeclare fatal. Every call is executed twice and a differing second result is refused as non-deterministic — a runtime backstop for gaps in the static analysis.
 - Failures are classified `transient` (sandbox died/timed out — retried once, never blacklisted), `function` (non-deterministic, produced output, failed to define — function blacklisted), or `call` (threw, non-scalar result — this call only). Blacklisting on a transient failure would cascade to every dependent decoder.
 
-### Dead-store elimination (`src/DeadCodeEliminator.php`, opt-in via `-u`)
+### Dead-code elimination (`src/DeadCodeEliminator.php`, opt-in via `-u`)
 
 Off by default (default output stays byte-identical). Runs as the final step of
 `deobfuscate()` when the `Deobfuscator` is constructed with `$removeDeadCode`.
 After the reducer inlines a decoder's output, the scaffolding is left behind
 (`$q = "<base64 blob>";`, FOPO `$x = "b"; $x = "ba"; …` ladders, a
-`$gz = "<binary>";` whose only use was inlined); this pass drops it.
+`$gz = "<binary>";` whose only use was inlined); this pass drops it. It also removes uncalled **pure** functions (decoder scaffolding left after their calls were inlined) — gated by `PurityAnalyzer`, so an unreferenced *impure* function (a possible dormant payload) is kept for the `-a` security pass, and function removal is skipped entirely when the file dispatches dynamically (`$$`, `$var()`, `call_user_func`/`create_function` with a computed callable, `function_exists`/`is_callable`).
 
 Deliberately conservative — it is a readability pass over attacker code and must
 never change behaviour. It removes ONLY a statement of the exact shape
