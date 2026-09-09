@@ -257,6 +257,24 @@ function respond(array $r): void
     fflush(STDOUT);
 }
 
+// Accept scalars, null, and (bounded) arrays whose leaves are all scalar/null.
+// Objects and resources are refused - a decoder's inputs are always plain data.
+function arg_ok($a, int $d = 0): bool
+{
+    if ($a === null || is_scalar($a)) {
+        return true;
+    }
+    if (is_array($a) && $d < 8) {
+        foreach ($a as $v) {
+            if (!arg_ok($v, $d + 1)) {
+                return false;
+            }
+        }
+        return true;
+    }
+    return false;
+}
+
 while (($line = fgets(STDIN)) !== false) {
     $line = trim($line);
     if ($line === '') {
@@ -294,7 +312,7 @@ while (($line = fgets(STDIN)) !== false) {
         continue;
     }
     foreach ($req['args'] as $a) {
-        if ($a !== null && !is_scalar($a)) {
+        if (!arg_ok($a)) {
             respond(['ok' => false, 'error' => 'non-scalar argument', 'kind' => 'call']);
             continue 2;
         }

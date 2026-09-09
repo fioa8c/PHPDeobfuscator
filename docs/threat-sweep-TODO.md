@@ -187,7 +187,7 @@ this PHP) — retry the parse with `<?` normalised to `<?php` on failure
 (`threats/FIO-3701/…`, `threats/FIO-4562/…`). `sample_breaking_parser/*`
 contains control bytes inside identifiers that PHP itself rejects.
 
-### 7. `-x` pure execution barely moves the needle (54 files)
+### 7. `-x` pure execution barely moves the needle (54 files) — WIDENED
 It does crack `chr(ord($s[$i]) - 1)` loops and `pack('H*')` decoders
 (`threats/wf-191/…`, `threats/FIO-7145/…`) but the payloads underneath are
 mostly request-driven shells, so the score stays RESIDUAL. Worth adding a

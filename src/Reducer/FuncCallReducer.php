@@ -280,13 +280,41 @@ class FuncCallReducer extends AbstractReducer
         if ($func === null) {
             return null;
         }
-        if (count($func->params) !== count($node->args)) {
-            return null;
-        }
         foreach ($node->args as $arg) {
             if ($arg->unpack || $arg->byRef) {
                 return null;
             }
+        }
+
+        // Direct sandbox execution for calls the symbolic binder cannot model -
+        // array arguments (array_map("chr", $table) decoders) or variadic
+        // functions - but whose arguments are all fully known. The symbolic
+        // path below only handles scalar args bound one-to-one to params.
+        $directValues = $this->fullyKnownArgValues($node);
+        if ($directValues !== null) {
+            $paramsSimple = count($func->params) === count($node->args);
+            foreach ($func->params as $param) {
+                if ($param->byRef || $param->variadic) {
+                    $paramsSimple = false;
+                }
+            }
+            $anyArrayArg = false;
+            foreach ($directValues as $v) {
+                if (is_array($v)) {
+                    $anyArrayArg = true;
+                }
+            }
+            if (!$paramsSimple || $anyArrayArg) {
+                if (++$this->inlineAttempts > self::MAX_INLINE_ATTEMPTS) {
+                    return null;
+                }
+                $value = $this->tryExecutePure($name, $directValues);
+                return $value === null ? null : Utils::scalarToNode($value);
+            }
+        }
+
+        if (count($func->params) !== count($node->args)) {
+            return null; // symbolic binding needs one arg per param
         }
         foreach ($func->params as $param) {
             if ($param->byRef || $param->variadic) {
@@ -369,6 +397,49 @@ class FuncCallReducer extends AbstractReducer
      * @param scalar[] $argValues
      * @return scalar|null
      */
+    /**
+     * Argument values for a call when every argument is a fully-known scalar or
+     * a (bounded) array of scalars; null if any argument is unknown or holds an
+     * object/resource. Used to feed the sandbox for array/variadic calls.
+     *
+     * @return array<int, scalar|array|null>|null
+     */
+    private function fullyKnownArgValues(Node\Expr\FuncCall $node): ?array
+    {
+        $vals = [];
+        foreach ($node->args as $arg) {
+            if ($arg->unpack || $arg->byRef) {
+                return null;
+            }
+            try {
+                $v = Utils::getValue($arg->value);
+            } catch (\PHPDeobfuscator\Exceptions\BadValueException $e) {
+                return null;
+            }
+            if (!$this->isScalarOrScalarArray($v)) {
+                return null;
+            }
+            $vals[] = $v;
+        }
+        return $vals;
+    }
+
+    private function isScalarOrScalarArray($v, int $depth = 0): bool
+    {
+        if ($v === null || is_scalar($v)) {
+            return true;
+        }
+        if (is_array($v) && $depth < 8) {
+            foreach ($v as $x) {
+                if (!$this->isScalarOrScalarArray($x, $depth + 1)) {
+                    return false;
+                }
+            }
+            return true;
+        }
+        return false;
+    }
+
     private function tryExecutePure(string $name, array $argValues)
     {
         if ($this->purityAnalyzer === null || $this->pureExecutor === null) {

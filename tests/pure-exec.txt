@@ -165,3 +165,53 @@ function e($s)
 }
 $x = e("secret.txt");
 echo $x;
+INPUT
+
+function dec($codes){ return implode("", array_map("chr", $codes)); }
+echo dec(array(104, 105, 33));
+
+OPTIONS
+
+execute-pure
+
+OUTPUT
+
+function dec($codes)
+{
+    return implode("", array_map("chr", $codes));
+}
+echo "hi!";
+INPUT
+
+function run($a){ return array_map("system", $a); }
+$x = run(array("id", "whoami"));
+echo count($x);
+
+OPTIONS
+
+execute-pure
+
+OUTPUT
+
+function run($a)
+{
+    return array_map("system", $a);
+}
+$x = run(array("id", "whoami"));
+echo count($x);
+INPUT
+
+function j(...$parts){ return implode("-", $parts); }
+echo j("a", "b", "c");
+
+OPTIONS
+
+execute-pure
+
+OUTPUT
+
+function j(...$parts)
+{
+    return implode("-", $parts);
+}
+echo "a-b-c";
