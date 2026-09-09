@@ -1,0 +1,19 @@
+INPUT
+
+echo file_get_contents(__FILE__);
+
+OPTIONS
+
+max-inline-file=10
+
+OUTPUT
+
+echo file_get_contents("/var/www/html/testcase.php");
+
+INPUT
+
+echo file_get_contents(__FILE__);
+
+OUTPUT
+
+echo "<?php\necho file_get_contents(__FILE__);";

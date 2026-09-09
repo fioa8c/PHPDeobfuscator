@@ -4,6 +4,7 @@ namespace PHPDeobfuscator\Reducer;
 
 use PhpParser\Node\Scalar\String_;
 use PhpParser\Node\Expr\BinaryOp;
+use PHPDeobfuscator\AttrName;
 use PHPDeobfuscator\Utils;
 
 class BinaryOpReducer extends AbstractReducer
@@ -56,6 +57,9 @@ class BinaryOpReducer extends AbstractReducer
     public function reduceCoalesce(BinaryOp\Coalesce $node)
     { return $this->postProcess($node, $this->left($node) ?? $this->right($node)); }
 
+    /** `$a .= x` results longer than this stay as `.=` (the value is still tracked). */
+    const MAX_INLINE_SELF_CONCAT = 4096;
+
     public function reduceConcat(BinaryOp\Concat $node)
     {
         $left = $this->left($node);
@@ -63,7 +67,17 @@ class BinaryOpReducer extends AbstractReducer
         if (is_array($left) || is_array($right)) {
             return null;
         }
-        return $this->postProcess($node, $left . $right);
+        $result = $left . $right;
+        if ($node->getAttribute(AttrName::SELF_ASSIGN) === true
+            && strlen($result) > self::MAX_INLINE_SELF_CONCAT) {
+            // Thousands of `$out .= 'chunk';` lines would each be replaced by
+            // the ever-growing accumulated literal - quadratic output and
+            // memory. Keep the statement, publish the value for the Resolver
+            // (which turns the node back into `.=`, dropping this attribute).
+            $node->setAttribute(AttrName::VALUE, new \PHPDeobfuscator\ValRef\ScalarValue($result));
+            return null;
+        }
+        return $this->postProcess($node, $result);
     }
 
     public function reduceDiv(BinaryOp\Div $node)

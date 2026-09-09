@@ -12,11 +12,36 @@ use PHPDeobfuscator\ValRef\ResourceValue;
 
 class FileSystemCall implements FunctionReducer
 {
-    private $fileSystem;
+    /**
+     * Reads larger than this are left as a call instead of being folded into a
+     * string literal. Self-replicating malware routinely does
+     * `file_get_contents(__FILE__)`; folding that inlines the whole (still
+     * obfuscated) source at every read site, which buries the real code without
+     * revealing anything the call itself did not already say.
+     */
+    public const DEFAULT_MAX_INLINE_BYTES = 65536;
 
-    public function __construct(FileSystem $fileSystem)
+    private $fileSystem;
+    private int $maxInlineBytes;
+
+    public function __construct(FileSystem $fileSystem, ?int $maxInlineBytes = null)
     {
         $this->fileSystem = $fileSystem;
+        $this->maxInlineBytes = $maxInlineBytes ?? self::DEFAULT_MAX_INLINE_BYTES;
+    }
+
+    /** Null when the read is too large to be worth inlining. */
+    private function readCapped(string $filename): ?string
+    {
+        try {
+            $content = $this->fileSystem->read($filename);
+        } catch (\League\Flysystem\FilesystemException $e) {
+            return null;
+        }
+        if ($this->maxInlineBytes >= 0 && strlen($content) > $this->maxInlineBytes) {
+            return null;
+        }
+        return $content;
     }
 
     public function getSupportedNames()
@@ -44,7 +69,11 @@ class FileSystemCall implements FunctionReducer
     private function file_get_contents($filename, $flags = 0, $context = null, $offset = -1, $maxlen = -1)
     {
         if (Utils::safeFileExists($this->fileSystem, $filename)) {
-            return Utils::scalarToNode($this->fileSystem->read($filename));
+            $content = $this->readCapped($filename);
+            if ($content === null) {
+                return null;
+            }
+            return Utils::scalarToNode($content);
         }
         return null;
     }
@@ -52,7 +81,10 @@ class FileSystemCall implements FunctionReducer
     private function file($filename, $flags = 0, $context = null)
     {
         if (Utils::safeFileExists($this->fileSystem, $filename)) {
-            $content = $this->fileSystem->read($filename);
+            $content = $this->readCapped($filename);
+            if ($content === null) {
+                return null;
+            }
             $lines = preg_split("/(\r\n|\r|\n)/", $content);
             return Utils::scalarToNode($lines);
         }
@@ -73,7 +105,11 @@ class FileSystemCall implements FunctionReducer
             $stream = $this->fileSystem->readStream($filename);
         } elseif (strpos($mode, 'w') !== false) {
             $stream = fopen('php://memory', 'w+b');
-            $this->fileSystem->writeStream($filename, $stream);
+            try {
+                $this->fileSystem->writeStream($filename, $stream);
+            } catch (\League\Flysystem\FilesystemException $e) {
+                return; // e.g. path traversal outside the virtual root
+            }
         } else {
             return;
         }

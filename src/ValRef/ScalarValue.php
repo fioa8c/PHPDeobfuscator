@@ -37,10 +37,29 @@ class ScalarValue extends AbstractValRef
 
     public function arrayAssign($dim, ValRef $valRef)
     {
+        $new = $valRef->getValue();
+        if (is_string($this->value)) {
+            // String offset write: PHP only accepts integer offsets and stores a
+            // single byte; anything else is a runtime error, i.e. unknowable here.
+            $isIntDim = is_int($dim) || (is_string($dim) && preg_match('/^-?\d+$/', $dim) === 1);
+            if ($dim === null || !$isIntDim || !is_scalar($new) || (string)$new === '') {
+                throw new \PHPDeobfuscator\Exceptions\BadValueException("Unsupported string offset write");
+            }
+            try {
+                $this->value[(int)$dim] = (string)$new;
+            } catch (\Throwable $e) {
+                throw new \PHPDeobfuscator\Exceptions\BadValueException("Unsupported string offset write");
+            }
+            return;
+        }
+        if ($this->value !== null && $this->value !== false && !is_array($this->value)) {
+            // "Cannot use a scalar value as an array"
+            throw new \PHPDeobfuscator\Exceptions\BadValueException("Array write to scalar");
+        }
         if ($dim === null) {
-            $this->value[] = $valRef->getValue();
+            $this->value[] = $new;
         } else {
-            $this->value[$dim] = $valRef->getValue();
+            $this->value[$dim] = $new;
         }
     }
 }

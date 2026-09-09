@@ -20,7 +20,11 @@ class ByReference implements ValRef
 
     public function isMutable()
     {
-        return $this->getVal()->isMutable();
+        try {
+            return $this->getVal()->isMutable();
+        } catch (Exceptions\UnknownValueException $e) {
+            return true;
+        }
     }
 
     public function setMutable($mutable)
@@ -79,7 +83,26 @@ class ByReference implements ValRef
 
     private function getVal()
     {
-        $val = $this->variable->getValue($this->scope);
+        // References can form cycles ($a = &$b; $b = &$a; $a['x'] = &$a): the
+        // chain is followed iteratively, and resolving a hop can re-enter here
+        // through an array element, so the re-entrancy depth is bounded too.
+        static $depth = 0;
+        if ($depth > 64) {
+            throw new Exceptions\UnknownValueException("Reference cycle");
+        }
+        $depth++;
+        try {
+            $val = $this->variable->getValue($this->scope);
+            $hops = 0;
+            while ($val instanceof ByReference) {
+                if (++$hops > 32) {
+                    throw new Exceptions\UnknownValueException("Reference cycle");
+                }
+                $val = $val->variable->getValue($val->scope);
+            }
+        } finally {
+            $depth--;
+        }
         if ($val === null) {
             throw new Exceptions\UnknownValueException("Cannot get value of reference");
         }

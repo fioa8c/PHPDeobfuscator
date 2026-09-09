@@ -1,0 +1,167 @@
+INPUT
+
+function tbl($i){static $a=null;if($a===null){$a=array_merge(array("uryyb"),array("jbeyq"));}return $a[$i];}
+function dec($i){$e=tbl($i);$r="";for($j=0;$j<strlen($e);$j++){$p=strpos("abcdefghijklmnopqrstuvwxyz",$e[$j]);$r.=($p===false)?$e[$j]:"nopqrstuvwxyzabcdefghijklm"[$p];}return $r;}
+echo dec(0);
+echo dec(1);
+
+OPTIONS
+
+execute-pure
+
+OUTPUT
+
+function tbl($i)
+{
+    static $a = null;
+    if ($a === null) {
+        $a = array(0 => "uryyb", 1 => "jbeyq");
+    }
+    return $a[$i];
+}
+function dec($i)
+{
+    $e = tbl($i);
+    $r = "";
+    for ($j = 0; $j < strlen($e); $j++) {
+        $p = strpos("abcdefghijklmnopqrstuvwxyz", $e[$j]);
+        $r .= $p === false ? $e[$j] : "nopqrstuvwxyzabcdefghijklm"[$p];
+    }
+    return $r;
+}
+echo "hello";
+echo "world";
+
+INPUT
+
+function leak($i){$a=array("x","y");return $a[$i] . $_GET["p"];}
+echo leak(0);
+
+OPTIONS
+
+execute-pure
+
+OUTPUT
+
+function leak($i)
+{
+    $a = array("x", "y");
+    return $a[$i] . $_GET["p"];
+}
+echo leak(0);
+
+INPUT
+
+function rd($i){$a=array("x","y");return $a[$i] . file_get_contents("/etc/passwd");}
+echo rd(0);
+
+OPTIONS
+
+execute-pure
+
+OUTPUT
+
+function rd($i)
+{
+    $a = array("x", "y");
+    return $a[$i] . file_get_contents("/etc/passwd");
+}
+echo rd(0);
+
+INPUT
+
+function ctr(){static $n=0;$n++;return $n;}
+echo ctr();
+echo ctr();
+
+OPTIONS
+
+execute-pure
+
+OUTPUT
+
+function ctr()
+{
+    static $n = 0;
+    $n++;
+    return $n;
+}
+echo ctr();
+echo ctr();
+
+INPUT
+
+function stamp($i){$a=array("x","y");return $a[$i] . time();}
+echo stamp(0);
+
+OPTIONS
+
+execute-pure
+
+OUTPUT
+
+function stamp($i)
+{
+    $a = array("x", "y");
+    return $a[$i] . time();
+}
+echo stamp(0);
+
+INPUT
+
+function ramp(){static $n=0;$n++;return $n<3?"a":"b";}
+echo ramp();
+echo ramp();
+echo ramp();
+echo ramp();
+
+OPTIONS
+
+execute-pure
+
+OUTPUT
+
+function ramp()
+{
+    static $n = 0;
+    $n++;
+    return $n < 3 ? "a" : "b";
+}
+echo ramp();
+echo ramp();
+echo ramp();
+echo ramp();
+INPUT
+
+function d($s){ return @str_rot13(@base64_decode($s)); }
+echo d("dXJ5eWIgamJleXE=");
+
+OPTIONS
+
+execute-pure
+
+OUTPUT
+
+function d($s)
+{
+    return @str_rot13(@base64_decode($s));
+}
+echo "hello world";
+INPUT
+
+function e($s){ return @strlen(@file_get_contents($s)); }
+$x = e("secret.txt");
+echo $x;
+
+OPTIONS
+
+execute-pure
+
+OUTPUT
+
+function e($s)
+{
+    return @strlen(@file_get_contents($s));
+}
+$x = e("secret.txt");
+echo $x;

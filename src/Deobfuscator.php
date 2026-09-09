@@ -10,6 +10,7 @@ class Deobfuscator
     private $parser;
     private $prettyPrinter;
 
+    private $commentStrip;
     private $firstPass;
     private $closurePrepass;
     private $secondPass;
@@ -19,10 +20,25 @@ class Deobfuscator
 
     private $metaVisitor;
 
-    public function __construct($dumpOrig = false, $annotateReductions = false)
+    /** Dead-store removal pass (only when constructed with $removeDeadCode). */
+    private ?DeadCodeEliminator $deadCode = null;
+
+    /** Sandbox worker, kept alive for the lifetime of this deobfuscator. */
+    private ?PureFunction\PureFunctionExecutor $pureExecutor = null;
+
+    public function __construct($dumpOrig = false, $annotateReductions = false, $stripComments = false, $executePureFunctions = false, ?int $maxInlineFileBytes = null, $removeDeadCode = false)
     {
+        if ($removeDeadCode) {
+            $this->deadCode = new DeadCodeEliminator();
+        }
         $this->parser = (new \PhpParser\ParserFactory())->create(\PhpParser\ParserFactory::PREFER_PHP7);
         $this->prettyPrinter = new ExtendedPrettyPrinter();
+
+        $this->commentStrip = null;
+        if ($stripComments) {
+            $this->commentStrip = new \PhpParser\NodeTraverser;
+            $this->commentStrip->addVisitor(new CommentStripVisitor());
+        }
 
         $this->firstPass = new \PhpParser\NodeTraverser;
         $this->closurePrepass = new \PhpParser\NodeTraverser;
@@ -46,9 +62,17 @@ class Deobfuscator
 
         $funcCallReducer = new Reducer\FuncCallReducer($resolver, $evalReducer);
         $funcCallReducer->addReducer(new Reducer\FuncCallReducer\FunctionSandbox());
-        $funcCallReducer->addReducer(new Reducer\FuncCallReducer\FileSystemCall($this->fileSystem));
+        $funcCallReducer->addReducer(new Reducer\FuncCallReducer\FileSystemCall($this->fileSystem, $maxInlineFileBytes));
         $funcCallReducer->addReducer(new Reducer\FuncCallReducer\MiscFunctions($evalReducer, $resolver));
         $funcCallReducer->addReducer(new Reducer\FuncCallReducer\PassThrough());
+
+        if ($executePureFunctions) {
+            $this->pureExecutor = new PureFunction\PureFunctionExecutor();
+            $funcCallReducer->enablePureExecution(
+                new PureFunction\PurityAnalyzer($resolver),
+                $this->pureExecutor
+            );
+        }
 
         $reducer = new ReducerVisitor();
         $reducer->addReducer(new Reducer\BinaryOpReducer());
@@ -65,6 +89,13 @@ class Deobfuscator
             $this->secondPass->addVisitor($this->metaVisitor);
         } else {
             $this->metaVisitor = null;
+        }
+    }
+
+    public function __destruct()
+    {
+        if ($this->pureExecutor !== null) {
+            $this->pureExecutor->shutdown();
         }
     }
 
@@ -177,9 +208,19 @@ class Deobfuscator
 
     public function deobfuscate(array $tree)
     {
+        if ($this->commentStrip !== null) {
+            // Strip the input's comments before any pass so the -o / -a
+            // annotation comments, added downstream, are preserved.
+            $tree = $this->commentStrip->traverse($tree);
+        }
         $tree = $this->firstPass->traverse($tree);
         $tree = $this->closurePrepass->traverse($tree);
         $tree = $this->secondPass->traverse($tree);
+        if ($this->deadCode !== null) {
+            // Final readability pass: drop assignments to variables the reduced
+            // code no longer reads (decoder scaffolding left behind).
+            $tree = $this->deadCode->run($tree);
+        }
         return $tree;
     }
 

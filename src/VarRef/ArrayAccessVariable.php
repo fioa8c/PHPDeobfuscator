@@ -30,8 +30,14 @@ class ArrayAccessVariable implements VarRef
     {
         $arrVal = $this->arr->getValue($scope);
         if ($arrVal !== null) {
-            $arrVal->arrayAssign($this->dim, $valRef);
-            return true;
+            try {
+                $arrVal->arrayAssign($this->dim, $valRef);
+                return true;
+            } catch (\PHPDeobfuscator\Exceptions\BadValueException | \TypeError $e) {
+                // Can't model the write (e.g. string offset with a string key):
+                // from here on the whole container is unknown.
+                return $this->arr->assignValue($scope, \PHPDeobfuscator\ValRef\UnknownValRef::$INSTANCE);
+            }
         }
         return false;
     }

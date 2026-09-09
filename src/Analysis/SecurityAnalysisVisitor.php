@@ -16,6 +16,14 @@ class SecurityAnalysisVisitor extends \PhpParser\NodeVisitorAbstract
     private array $frameStack = [];
 
     /**
+     * Parallel to the scope stack: variable-name => taint label, one map per
+     * scope (index 0 is the file/global scope). A best-effort forward taint
+     * pass that lets `$x = $_POST['c']; eval($x);` be reported as tainted even
+     * though the source is one assignment removed from the sink.
+     */
+    private array $taintStack = [[]];
+
+    /**
      * Stack of name-context entries pushed by Namespace_/Class_/Trait_/Interface_.
      * Each entry: ['kind' => 'namespace'|'class'|'trait'|'interface'|'anon_class', 'name' => string, 'line' => int].
      */
@@ -55,7 +63,12 @@ class SecurityAnalysisVisitor extends \PhpParser\NodeVisitorAbstract
         } elseif ($node instanceof Expr\ArrowFunction) {
             $this->frameStack[] = '{fn@line:' . $node->getLine() . '}';
         }
+        if ($node instanceof Stmt\Function_ || $node instanceof Stmt\ClassMethod
+            || $node instanceof Expr\Closure || $node instanceof Expr\ArrowFunction) {
+            $this->taintStack[] = [];
+        }
 
+        $this->recordTaint($node);
         $this->detectSource($node);
         $this->detectSink($node);
     }
@@ -68,6 +81,7 @@ class SecurityAnalysisVisitor extends \PhpParser\NodeVisitorAbstract
             || $node instanceof Expr\ArrowFunction
         ) {
             array_pop($this->frameStack);
+            array_pop($this->taintStack);
         }
         if ($node instanceof Stmt\Namespace_
             || $node instanceof Stmt\Class_
@@ -76,6 +90,130 @@ class SecurityAnalysisVisitor extends \PhpParser\NodeVisitorAbstract
         ) {
             array_pop($this->nameStack);
         }
+    }
+
+    /** Reference to the taint map for the current (innermost) scope. */
+    private function &currentTaint(): array
+    {
+        return $this->taintStack[count($this->taintStack) - 1];
+    }
+
+    /**
+     * Forward-propagate taint through a straight-line assignment so a later
+     * sink that reads the variable can be flagged. Best-effort: it follows
+     * traversal (document) order and does not reason about branches, so it can
+     * miss a flow or, rarely, carry one past a reassignment in another branch.
+     */
+    private function recordTaint(Node $node): void
+    {
+        if (($node instanceof Expr\Assign || $node instanceof Expr\AssignOp)
+            && $node->var instanceof Expr\Variable && is_string($node->var->name)) {
+            $labels = [];
+            $this->collectTaint($node->expr, $labels);
+            if ($node instanceof Expr\AssignOp) {
+                // `$x .= f($_GET)` keeps whatever $x already carried.
+                $map = $this->currentTaint();
+                if (isset($map[$node->var->name])) {
+                    $labels[$map[$node->var->name]] = true;
+                }
+            }
+            $map =& $this->currentTaint();
+            if ($labels) {
+                $map[$node->var->name] = implode(', ', array_keys($labels));
+            } else {
+                unset($map[$node->var->name]);
+            }
+        }
+    }
+
+    /**
+     * Collect attacker-controlled / remote taint labels reachable in $node's
+     * subtree into $found (used as a set). Does not descend into nested
+     * function-like bodies, which have their own scope.
+     */
+    private function collectTaint(?Node $node, array &$found): void
+    {
+        if ($node === null) {
+            return;
+        }
+        if ($node instanceof Expr\Variable && is_string($node->name)) {
+            static $superglobals = [
+                '_GET' => '$_GET', '_POST' => '$_POST', '_REQUEST' => '$_REQUEST',
+                '_COOKIE' => '$_COOKIE', '_FILES' => '$_FILES', '_SERVER' => '$_SERVER',
+                '_ENV' => '$_ENV', 'GLOBALS' => '$GLOBALS',
+            ];
+            if (isset($superglobals[$node->name])) {
+                $found[$superglobals[$node->name]] = true;
+                return;
+            }
+            $map = $this->currentTaint();
+            if (isset($map[$node->name])) {
+                $found[$map[$node->name]] = true;
+            }
+            return;
+        }
+        if ($node instanceof Expr\FuncCall && $node->name instanceof Node\Name) {
+            $fn = strtolower($node->name->toString());
+            if ($fn === 'getenv') {
+                $found['getenv()'] = true;
+            } elseif (in_array($fn, ['curl_exec', 'curl_multi_exec'], true)) {
+                $found['remote (curl)'] = true;
+            } elseif (in_array($fn, ['file_get_contents', 'fopen', 'readfile', 'file', 'stream_get_contents', 'get_headers'], true)) {
+                $arg0 = $node->args[0]->value ?? null;
+                if ($arg0 instanceof Node\Scalar\String_) {
+                    if (preg_match('#^\s*(https?|ftps?)://#i', $arg0->value)) {
+                        $found['remote URL'] = true;
+                    } elseif (preg_match('#^\s*php://(input|stdin)#i', $arg0->value)) {
+                        $found['request body (php://input)'] = true;
+                    }
+                }
+            }
+        }
+        // Do not cross into a nested scope's body.
+        if ($node instanceof Expr\Closure || $node instanceof Expr\ArrowFunction
+            || $node instanceof Stmt\Function_ || $node instanceof Stmt\ClassMethod) {
+            return;
+        }
+        foreach ($node->getSubNodeNames() as $sub) {
+            $child = $node->$sub;
+            if ($child instanceof Node) {
+                $this->collectTaint($child, $found);
+            } elseif (is_array($child)) {
+                foreach ($child as $c) {
+                    if ($c instanceof Node) {
+                        $this->collectTaint($c, $found);
+                    }
+                }
+            }
+        }
+    }
+
+    /**
+     * A note fragment naming the attacker/remote sources feeding $exprs, or null
+     * when none reach them. Merged into the sink finding's note so a report
+     * shows "eval ... (tainted by $_POST)".
+     *
+     * @param Node ...$exprs
+     */
+    private function taintNote(...$exprs): ?string
+    {
+        $found = [];
+        foreach ($exprs as $e) {
+            if ($e instanceof Node) {
+                $this->collectTaint($e, $found);
+            }
+        }
+        if (!$found) {
+            return null;
+        }
+        return 'tainted by ' . implode(', ', array_keys($found));
+    }
+
+    /** Merge a base note and a taint note into one note string (or null). */
+    private static function mergeNote(?string $base, ?string $taint): ?string
+    {
+        $parts = array_filter([$base, $taint], fn($x) => $x !== null && $x !== '');
+        return $parts ? implode('; ', $parts) : null;
     }
 
     private function detectSource(Node $node): void
@@ -122,7 +260,8 @@ class SecurityAnalysisVisitor extends \PhpParser\NodeVisitorAbstract
                 'code_exec',
                 'eval',
                 $node->getLine(),
-                $this->currentContext()
+                $this->currentContext(),
+                $this->taintNote($node->expr)
             ));
             return;
         }
@@ -133,7 +272,7 @@ class SecurityAnalysisVisitor extends \PhpParser\NodeVisitorAbstract
                 'shell_exec',
                 $node->getLine(),
                 $this->currentContext(),
-                'backticks'
+                self::mergeNote('backticks', $this->taintNote($node))
             ));
             return;
         }
@@ -154,19 +293,21 @@ class SecurityAnalysisVisitor extends \PhpParser\NodeVisitorAbstract
                 $label,
                 $node->getLine(),
                 $this->currentContext(),
-                'non-literal arg'
+                self::mergeNote('non-literal arg', $this->taintNote($node->expr))
             ));
             return;
         }
         if ($node instanceof Expr\FuncCall && !($node->name instanceof Node\Name)) {
             $this->findings->addSink(new Finding(
-                'sink', 'dispatch', '$variable()', $node->getLine(), $this->currentContext(), 'variable function'
+                'sink', 'dispatch', '$variable()', $node->getLine(), $this->currentContext(),
+                self::mergeNote('variable function', $this->taintNote($node->name))
             ));
             return;
         }
         if ($node instanceof Expr\MethodCall && !($node->name instanceof Node\Identifier)) {
             $this->findings->addSink(new Finding(
-                'sink', 'dispatch', '$obj->$method()', $node->getLine(), $this->currentContext(), 'variable method'
+                'sink', 'dispatch', '$obj->$method()', $node->getLine(), $this->currentContext(),
+                self::mergeNote('variable method', $this->taintNote($node->name))
             ));
             return;
         }
@@ -197,7 +338,8 @@ class SecurityAnalysisVisitor extends \PhpParser\NodeVisitorAbstract
         // and `new class { ... }` (Stmt\Class_, anonymous-class definition).
         if ($node instanceof Expr\New_ && $node->class instanceof Expr) {
             $this->findings->addSink(new Finding(
-                'sink', 'dispatch', 'new $variable', $node->getLine(), $this->currentContext(), 'variable class'
+                'sink', 'dispatch', 'new $variable', $node->getLine(), $this->currentContext(),
+                self::mergeNote('variable class', $this->taintNote($node->class))
             ));
             return;
         }
@@ -209,6 +351,8 @@ class SecurityAnalysisVisitor extends \PhpParser\NodeVisitorAbstract
                 if ($note === self::SKIP) {
                     return;
                 }
+                $argExprs = array_map(fn($a) => $a->value, $node->args);
+                $note = self::mergeNote($note, $this->taintNote(...$argExprs));
                 $this->findings->addSink(new Finding(
                     'sink',
                     $category,

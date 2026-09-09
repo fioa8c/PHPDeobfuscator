@@ -23,7 +23,9 @@ class ListVarRef implements VarRef
 
     public function assignValue(Scope $scope, ValRef $valRef)
     {
-        if (!($valRef instanceof ArrayVal)) {
+        // A list() destructure of an array whose contents are uncertain (e.g.
+        // reassigned inside a branch) tells us nothing about the targets.
+        if (!($valRef instanceof ArrayVal) || $valRef->isMutable()) {
             return false;
         }
         $didAssignAll = true;
@@ -32,7 +34,12 @@ class ListVarRef implements VarRef
             if ($var === null) {
                 continue;
             }
-            $val = $valRef->arrayFetch($i);
+            try {
+                $val = $valRef->arrayFetch($i);
+            } catch (\PHPDeobfuscator\Exceptions\BadValueException $e) {
+                $didAssignAll = false;
+                continue;
+            }
             if ($val === null) {
                 continue;
             }

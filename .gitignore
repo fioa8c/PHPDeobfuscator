@@ -2,6 +2,9 @@
 /vendor/
 /composer.lock
 
+# Local obfuscated sample inputs
+/samples/
+
 # Git worktrees
 /.worktrees/
 
@@ -10,3 +13,9 @@
 
 .htaccess
 
+# Threat sweep reports
+/report/
+/out/
+
+# Stray downloaded archive
+/mago-*.tar.gz

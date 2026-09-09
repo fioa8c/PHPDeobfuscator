@@ -19,7 +19,7 @@ while ($testfile = readdir($d)) {
         exit(1);
     }
     $tests = array();
-    $curTest = array('input' => array(), 'output' => array(), 'analysis' => null, 'analysis_text' => null, 'analysis_json' => null);
+    $curTest = array('input' => array(), 'output' => array(), 'analysis' => null, 'analysis_text' => null, 'analysis_json' => null, 'options' => array());
     $lines = null;
     while (!feof($f)) {
         $line = fgets($f);
@@ -27,12 +27,15 @@ while ($testfile = readdir($d)) {
         if ($trim === 'INPUT') {
             if ($lines !== null) {
                 $tests[] = $curTest;
-                $curTest = array('input' => array(), 'output' => array(), 'analysis' => null, 'analysis_text' => null, 'analysis_json' => null);
+                $curTest = array('input' => array(), 'output' => array(), 'analysis' => null, 'analysis_text' => null, 'analysis_json' => null, 'options' => array());
             }
             $lines = &$curTest['input'];
             continue;
         } elseif ($trim === 'OUTPUT') {
             $lines = &$curTest['output'];
+            continue;
+        } elseif ($trim === 'OPTIONS') {
+            $lines = &$curTest['options'];
             continue;
         } elseif ($trim === 'ANALYSIS') {
             $curTest['analysis'] = array();
@@ -58,7 +61,14 @@ while ($testfile = readdir($d)) {
     foreach ($tests as $i => $test) {
         $name = $testfile . '/' . ($i + 1);
         $code = "<?php\n" . trim(implode('', $test['input']));
-        $deobf = new \PHPDeobfuscator\Deobfuscator();
+        $options = array_filter(array_map('trim', $test['options']), 'strlen');
+        $maxInlineFile = null;
+        foreach ($options as $opt) {
+            if (strpos($opt, 'max-inline-file=') === 0) {
+                $maxInlineFile = (int) substr($opt, strlen('max-inline-file='));
+            }
+        }
+        $deobf = new \PHPDeobfuscator\Deobfuscator(false, false, false, in_array('execute-pure', $options, true), $maxInlineFile, in_array('remove-dead-code', $options, true));
         $deobf->getFilesystem()->write($virtualPath, $code);
         $deobf->setCurrentFilename($virtualPath);
         try {

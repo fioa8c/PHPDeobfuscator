@@ -62,4 +62,25 @@ class MiscReducer extends AbstractReducer
         }
         return new Node\Stmt\Return_(Utils::scalarToNode(Utils::getValue($node->expr)));
     }
+
+    /**
+     * Rewrites `new $cls(...)` into `new ActualClass(...)` when the class
+     * expression provably holds a class name. Obfuscators hide the interesting
+     * classes this way - `new $a()` says nothing, `new ZipArchive()` says a lot.
+     *
+     * Only a syntactically valid class identifier is substituted, so a value
+     * that merely happens to be a string cannot produce invalid output. This is
+     * a pure readability rewrite: PHP resolves `new $cls` to exactly this class.
+     */
+    public function reduceNew(Node\Expr\New_ $node)
+    {
+        if ($node->class instanceof Node\Name || $node->class instanceof Node\Stmt\Class_) {
+            return;
+        }
+        $name = Utils::getValue($node->class);
+        if (!is_string($name) || !preg_match('/^\\\\?[A-Za-z_\\x80-\\xff][A-Za-z0-9_\\x80-\\xff]*(\\\\[A-Za-z_\\x80-\\xff][A-Za-z0-9_\\x80-\\xff]*)*$/', $name)) {
+            return;
+        }
+        return new Node\Expr\New_(new Node\Name($name), $node->args, $node->getAttributes());
+    }
 }
