@@ -1,0 +1,116 @@
+INPUT
+$q = "aGVsbG8=";
+echo "hi";
+OPTIONS
+remove-dead-code
+OUTPUT
+echo "hi";
+INPUT
+$x = "b";
+$x = "ba";
+$x = "base64_decode";
+echo "done";
+OPTIONS
+remove-dead-code
+OUTPUT
+echo "done";
+INPUT
+$x = strlen($_GET["a"]);
+echo "hi";
+OPTIONS
+remove-dead-code
+OUTPUT
+$x = strlen($_GET["a"]);
+echo "hi";
+INPUT
+$x = "secret";
+extract($_GET);
+echo "hi";
+OPTIONS
+remove-dead-code
+OUTPUT
+$x = "secret";
+extract($_GET);
+echo "hi";
+INPUT
+$x = "y";
+eval($_GET["c"]);
+OPTIONS
+remove-dead-code
+OUTPUT
+$x = "y";
+eval($_GET["c"]);
+INPUT
+$x = "y";
+$f = function () use ($x) {
+    return $x;
+};
+register($f);
+OPTIONS
+remove-dead-code
+OUTPUT
+$x = "y";
+$f = function () use($x) {
+    return "y";
+};
+register($f);
+INPUT
+$x = "abc";
+foo($x);
+OPTIONS
+remove-dead-code
+OUTPUT
+$x = "abc";
+foo($x);
+INPUT
+$x = $_GET["a"];
+sink($x);
+$x = "dead";
+OPTIONS
+remove-dead-code
+OUTPUT
+$x = $_GET["a"];
+sink($x);
+$x = "dead";
+INPUT
+$x = "a";
+$y =& $x;
+sink($y);
+OPTIONS
+remove-dead-code
+OUTPUT
+$x = "a";
+$y =& $x;
+sink($y);
+INPUT
+function f($a)
+{
+    $tmp = "unused";
+    return $a + 1;
+}
+OPTIONS
+remove-dead-code
+OUTPUT
+function f($a)
+{
+    return $a + 1;
+}
+INPUT
+$x = "unused";
+$k = $_GET["n"];
+${$k} = "p";
+sink($k);
+OPTIONS
+remove-dead-code
+OUTPUT
+$x = "unused";
+$k = $_GET["n"];
+${$k} = "p";
+sink($k);
+INPUT
+$keep = "x";
+echo strtoupper($keep);
+OPTIONS
+remove-dead-code
+OUTPUT
+echo "X";
