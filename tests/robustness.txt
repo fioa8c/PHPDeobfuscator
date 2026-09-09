@@ -98,3 +98,31 @@ OUTPUT
 $n = strlen($_GET["x"]);
 $big = str_repeat("A", 90000000);
 echo $big;
+INPUT
+$obj = new class(5) {
+    public $n;
+    public function __construct($n) { $this->n = $n; }
+};
+echo $obj->n;
+OUTPUT
+$obj = new class(5)
+{
+    public $n;
+    public function __construct($n)
+    {
+        $this->n = $n;
+    }
+};
+echo $obj->n;
+INPUT
+$h = eval('return new class { public function f() { return 42; } };');
+echo $h->f();
+OUTPUT
+$h = new class
+{
+    public function f()
+    {
+        return 42;
+    }
+};
+echo $h->f();

@@ -84,9 +84,10 @@ class ResolveValueVisitor extends \PhpParser\NodeVisitorAbstract
                 if ($nameRef !== null && !$nameRef->isMutable()) {
                     $name = $nameRef->getValue();
                 }
-            } else {
+            } elseif ($expr->class instanceof Node\Name) {
                 $class = $expr->class->toString();
             }
+            // else: an anonymous class (Stmt\Class_) — value unknown, leave $class null
             if ($class != null) {
                 if (strtolower($class) === 'stdclass') {
                     $value = new ObjectVal();
