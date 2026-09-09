@@ -383,6 +383,9 @@ class PurityAnalyzer
      */
     private function isPureCallable(?Node $arg): bool
     {
+        if ($arg instanceof Expr\Closure || $arg instanceof Expr\ArrowFunction) {
+            return $this->isPureClosure($arg);
+        }
         if (!($arg instanceof Node\Scalar\String_)) {
             return false;
         }
@@ -392,6 +395,56 @@ class PurityAnalyzer
         }
         if ($this->resolver->getUserFunction($name) !== null && $this->check($name)) {
             return true;
+        }
+        return false;
+    }
+
+    /** True for a closure/arrow function whose body is itself pure. */
+    private function isPureClosure(Node $node): bool
+    {
+        if ($node instanceof Expr\Closure) {
+            if ($node->byRef) {
+                return $this->rej('closure-byref-return');
+            }
+            foreach ($node->params as $param) {
+                if ($param->byRef) {
+                    return $this->rej('closure-byref-param');
+                }
+                if (!($param->var instanceof Expr\Variable) || !is_string($param->var->name)) {
+                    return $this->rej('closure-complex-param');
+                }
+                if ($param->default !== null && !$this->checkNode($param->default)) {
+                    return false;
+                }
+            }
+            foreach ($node->uses as $use) {
+                if ($use->byRef) {
+                    return $this->rej('closure-byref-use'); // could mutate an outer local
+                }
+            }
+            foreach ($node->stmts as $stmt) {
+                if (!$this->checkNode($stmt)) {
+                    return false;
+                }
+            }
+            return true;
+        }
+        if ($node instanceof Expr\ArrowFunction) {
+            if ($node->byRef) {
+                return $this->rej('arrow-byref-return');
+            }
+            foreach ($node->params as $param) {
+                if ($param->byRef) {
+                    return $this->rej('arrow-byref-param');
+                }
+                if (!($param->var instanceof Expr\Variable) || !is_string($param->var->name)) {
+                    return $this->rej('arrow-complex-param');
+                }
+                if ($param->default !== null && !$this->checkNode($param->default)) {
+                    return false;
+                }
+            }
+            return $this->checkNode($node->expr);
         }
         return false;
     }
@@ -412,6 +465,11 @@ class PurityAnalyzer
         }
         if (!($node instanceof Node)) {
             return false;
+        }
+
+        // --- closures / arrow functions: allowed when pure ----------------
+        if ($node instanceof Expr\Closure || $node instanceof Expr\ArrowFunction) {
+            return $this->isPureClosure($node);
         }
 
         // --- calls -------------------------------------------------------
@@ -475,7 +533,7 @@ class PurityAnalyzer
             Expr\StaticCall::class, Expr\PropertyFetch::class, Expr\NullsafePropertyFetch::class,
             Expr\StaticPropertyFetch::class, Expr\Clone_::class, Expr\Eval_::class,
             Expr\Include_::class, Expr\ShellExec::class, Expr\Exit_::class, Expr\Print_::class,
-            Expr\Closure::class, Expr\ArrowFunction::class, Expr\Yield_::class, Expr\YieldFrom::class,
+            Expr\Yield_::class, Expr\YieldFrom::class,
             Expr\AssignRef::class, Expr\Throw_::class,
             Expr\ClassConstFetch::class, Expr\Instanceof_::class, Expr\List_::class,
             Stmt\Echo_::class, Stmt\Global_::class, Stmt\Unset_::class, Stmt\Goto_::class,
