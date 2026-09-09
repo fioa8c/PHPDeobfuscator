@@ -88,6 +88,7 @@ function f($a)
     $tmp = "unused";
     return $a + 1;
 }
+echo f($_GET["n"]);
 OPTIONS
 remove-dead-code
 OUTPUT
@@ -95,6 +96,7 @@ function f($a)
 {
     return $a + 1;
 }
+echo f($_GET["n"]);
 INPUT
 $x = "unused";
 $k = $_GET["n"];
@@ -114,3 +116,32 @@ OPTIONS
 remove-dead-code
 OUTPUT
 echo "X";
+INPUT
+function dec($s){ return base64_decode($s); }
+echo "hello";
+OPTIONS
+remove-dead-code
+OUTPUT
+echo "hello";
+INPUT
+function backdoor(){ system($_POST["c"]); }
+echo "hi";
+OPTIONS
+remove-dead-code
+OUTPUT
+function backdoor()
+{
+    system($_POST["c"]);
+}
+echo "hi";
+INPUT
+function a(){ return 1; }
+call_user_func($_GET["x"]);
+OPTIONS
+remove-dead-code
+OUTPUT
+function a()
+{
+    return 1;
+}
+call_user_func($_GET["x"]);
