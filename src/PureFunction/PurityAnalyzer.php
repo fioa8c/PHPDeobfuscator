@@ -76,6 +76,20 @@ class PurityAnalyzer
         'register_shutdown_function', 'set_error_handler', 'spl_autoload_register',
     ];
 
+    /**
+     * Higher-order builtins we CAN execute purely, provided their callback is
+     * itself a pure function: name => index of the callable argument. The
+     * classic decoder idiom array_map("chr", $codes) lives here. Callback funcs
+     * absent from this map (register_shutdown_function, array_walk (by-ref),
+     * forward_static_call, ...) stay rejected.
+     */
+    private const CALLBACK_ARG = [
+        'array_map' => 0, 'array_filter' => 1, 'array_reduce' => 1,
+        'usort' => 1, 'uasort' => 1, 'uksort' => 1,
+        'call_user_func' => 0, 'call_user_func_array' => 0,
+        'preg_replace_callback' => 1,
+    ];
+
     private const SUPERGLOBALS = [
         'GLOBALS', '_GET', '_POST', '_SERVER', '_COOKIE', '_FILES', '_ENV', '_REQUEST', '_SESSION',
     ];
@@ -168,8 +182,8 @@ class PurityAnalyzer
             return $this->rej('byref-return-function');
         }
         foreach ($func->params as $param) {
-            if ($param->byRef || $param->variadic) {
-                return $this->rej('byref-or-variadic-param');
+            if ($param->byRef) {
+                return $this->rej('byref-param');
             }
             if (!($param->var instanceof Expr\Variable) || !is_string($param->var->name)) {
                 return $this->rej('complex-param');
@@ -362,6 +376,26 @@ class PurityAnalyzer
         }
     }
 
+    /**
+     * True when $arg is a string literal naming a function that is safe to
+     * execute: a pure builtin, or a user function that itself passes purity
+     * (recorded as a dependency so the executor defines it).
+     */
+    private function isPureCallable(?Node $arg): bool
+    {
+        if (!($arg instanceof Node\Scalar\String_)) {
+            return false;
+        }
+        $name = strtolower(ltrim($arg->value, '\\'));
+        if (in_array($name, self::PURE_BUILTINS, true)) {
+            return true;
+        }
+        if ($this->resolver->getUserFunction($name) !== null && $this->check($name)) {
+            return true;
+        }
+        return false;
+    }
+
     /** Default-deny node walk. */
     private function checkNode($node): bool
     {
@@ -387,7 +421,23 @@ class PurityAnalyzer
             }
             $fname = strtolower($node->name->toString());
             if (in_array($fname, self::CALLBACK_FUNCS, true)) {
-                return $this->rej('callback-func:' . $fname);
+                if (!isset(self::CALLBACK_ARG[$fname])) {
+                    return $this->rej('callback-func:' . $fname); // register_*, array_walk, ...
+                }
+                // array_filter() with no callback just drops falsy values - pure.
+                $needsCb = !($fname === 'array_filter' && count($node->args) < 2);
+                if ($needsCb) {
+                    $cbArg = $node->args[self::CALLBACK_ARG[$fname]]->value ?? null;
+                    if (!$this->isPureCallable($cbArg)) {
+                        return $this->rej('impure-callback:' . $fname);
+                    }
+                }
+                foreach ($node->args as $arg) {
+                    if ($arg->unpack || $arg->byRef) {
+                        return $this->rej('arg-unpack-or-byref');
+                    }
+                }
+                return $this->checkNode($node->args); // the array/pattern/value args must be pure too
             }
             foreach ($node->args as $arg) {
                 if ($arg->unpack || $arg->byRef) {
