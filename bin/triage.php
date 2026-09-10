@@ -13,23 +13,29 @@ for ($i = 2; $i < count($argv); $i++) {
 }
 if (!is_file($path)) { fwrite(STDERR, "usage: triage.php results.jsonl [--md out.md]\n"); exit(2); }
 
+require __DIR__ . '/lib/obfscore.php';
+
 $rows = [];
 foreach (file($path, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES) as $l) { $r = json_decode($l, true); if ($r) $rows[] = $r; }
-// Reclassify: a small output whose remaining primitives are fed by request input is READABLE —
-// there is nothing left to decode statically (eval(base64_decode($_POST[..])) style backdoors).
+// Reclassify to READABLE any output the obfuscation scorer still calls busy but
+// that has nothing left for a *static* tool to decode. The raw scorer over-counts:
+// a legitimate library (PEAR, WordPress core) with an embedded base64 data table,
+// or a plain request-fed backdoor (`eval($_POST[..])`), both score HEAVY though
+// there is no encoded payload feeding computed code. `readabilityVerdict()` is the
+// discriminator the scorer lacks — a sample is still "packed" only when it BOTH
+// runs computed code (eval / $f() / create_function / …) AND carries an encoded
+// payload that could feed it. Size-independent, so it also clears the large
+// false-positives the previous request-input-only gate could not reach.
 $filesDir = dirname($path) . '/files';
 foreach ($rows as &$r) {
     if (!in_array($r['status'], ['UNREDUCED', 'RESIDUAL', 'IMPROVED'], true)) continue;
     $of = $filesDir . '/' . str_replace('/', '__', $r['file']) . '.deobf.php';
     if (!is_file($of)) continue;
     $o = file_get_contents($of);
-    if ($o === false || strlen($o) > 20000) continue;
-    $code = preg_replace('/\/\*.*?\*\/|(?<![:\'"])\/\/[^\n]*|#[^\n]*/s', '', $o);
-    if ($code === null || strlen($code) > 2500) continue;
-    if (!preg_match('/\$_(POST|GET|REQUEST|COOKIE|SERVER|FILES)\b|php:\/\/input|getenv|getallheaders/', $code)) continue;
-    if (preg_match('/[A-Za-z0-9+\/]{80,}={0,2}|(?:\\\\x[0-9a-fA-F]{2}){8,}|(?:[0-9a-fA-F]{2}){40,}/', $code)) continue;
-    if (preg_match_all('/\$\w+\s*\(/', $code) > 6) continue;
-    $r['status'] = 'READABLE';
+    if ($o === false || strlen($o) > 4 * 1024 * 1024) continue; // guard pathological sizes only
+    if (readabilityVerdict($o)['readable']) {
+        $r['status'] = 'READABLE';
+    }
 }
 unset($r);
 $byStatus = [];
