@@ -155,3 +155,35 @@ while ($testfile = readdir($d)) {
 }
 
 closedir($d);
+
+// --- EvalPeeler::normalizeLegacyStringOffsets unit cases -------------------
+// The eval-hook sandbox runs under PHP 8, which removed the `$s{i}` curly-brace
+// string-offset syntax that the FOPO / self-reading shell family is built from.
+// This transform rewrites it to `$s[i]` byte-for-byte (so __FILE__ self-decoders
+// that slice by offset still work). It needs no extension, so it is unit-tested
+// here regardless of whether php-eval-hook is installed.
+$normCases = array(
+    array('<?php echo $s{1};', '<?php echo $s[1];'),
+    array('<?php $x=$a{4}.$a{$i};', '<?php $x=$a[4].$a[$i];'),
+    array('<?php echo $arr[0]{2};', '<?php echo $arr[0][2];'),
+    array('<?php $a{0}{1}="x";', '<?php $a[0][1]="x";'),
+    array('<?php if($x){ echo 1; }', '<?php if($x){ echo 1; }'),            // block, untouched
+    array('<?php function f(){ return 1; }', '<?php function f(){ return 1; }'), // block
+    array('<?php $o=[1,2]; echo $o[0];', '<?php $o=[1,2]; echo $o[0];'),    // array literal
+    array('<?php echo "${v}";', '<?php echo "${v}";'),                       // interpolation
+    array('<?php echo "{$s}";', '<?php echo "{$s}";'),                       // interpolation
+    array('<?php $a{strlen($x)-1}=1;', '<?php $a[strlen($x)-1]=1;'),         // expr offset
+    array('<?php class C{ function m(){ $this->x=$s{0}; } }', '<?php class C{ function m(){ $this->x=$s[0]; } }'),
+);
+$peeler = new \PHPDeobfuscator\EvalHook\EvalPeeler();
+foreach ($normCases as $i => $case) {
+    $name = 'evalhook-normalize/' . ($i + 1);
+    $got = $peeler->normalizeLegacyStringOffsets($case[0]);
+    if ($got === $case[1] && strlen($got) === strlen($case[0])) {
+        echo "Test $name pass\n";
+    } else {
+        echo "Test $name failed:\n";
+        echo "Expected: {$case[1]}\n";
+        echo "Got:      {$got}\n";
+    }
+}

@@ -76,6 +76,19 @@ capturing every string passed to `eval()` *before* it executes, then feeds each
 captured layer back through the normal static pipeline for readability. Output
 is a series of `// ===== eval() layer N =====` sections.
 
+Before running a sample, `EvalPeeler` rewrites legacy curly-brace string
+offsets (`$s{$i}`, `$arr[0]{2}`) to the bracket form (`normalizeLegacyStringOffsets()`).
+That syntax was removed in PHP 8.0, and the large FOPO / `file_get_contents(__FILE__)`
+self-reading shell family is built from it, so under the sandbox's PHP 8 those
+samples fatal at parse time and never reach their first `eval()`. The rewrite is
+**byte-length preserving** (`{`→`[`, `}`→`]`, one char for one char) precisely
+because these shells slice their own source by fixed byte offset — shifting a
+byte would break the self-decode. It is token-based and conservative: only a `{`
+directly following a variable or a closed access becomes an offset; a block `{`
+(after `)`) or a string-interpolation brace is left alone, and any ambiguity
+returns the source untouched so a bad rewrite is never executed. Measured effect
+on a 40-file sample of curly-offset shells: layer capture 1 → 18.
+
 `EvalPeeler` (`src/EvalHook/EvalPeeler.php`) owns the sandbox: a separate
 `php -n` process, `open_basedir` confined to a throwaway per-run dir,
 `disable_functions`/`disable_classes` covering process/network/write/env and
