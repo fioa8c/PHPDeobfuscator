@@ -19,17 +19,24 @@ After `-x -u`, the decode engine has already unpacked essentially everything a
 
 139 "still-HEAVY" *looks* alarming, but the obfuscation scorer counts legitimate
 `base64_decode`/`gzinflate` calls and embedded base64 blobs, so **plaintext code
-scores HEAVY too**. Breaking the 139 down:
+scores HEAVY too**. Applying the `readabilityVerdict()` triage gate (a sample is
+"still packed" only when it BOTH runs computed code AND carries an encoded payload
+feeding it) splits the 139:
 
-- **110 are `sample-dump/bendigital2019_*`** — a single family whose files are
-  **already plaintext PHP** (verbose word-salad doc-comments + a legit embedded
-  base64 blob, signature `b64=2 max=2655 dec=7–9`). Input ≈ output; nothing to
-  decode. Pure scorer false-positive.
-- **Several more are WordPress core / libraries** injected into the corpus, e.g.
-  `bendigital2019_03168` (= `Services_JSON`, `OBJECT_K`/`ARRAY_A`), `LUKE-2178`
-  `class-wp-terms-list-table-template.php` (`max=119992` legit data table).
-  Plaintext, not malware.
-- That leaves **~a dozen files** with a *genuine* residual decode.
+- **~29 (21%) are genuine scorer false-positives** the gate reclassifies READABLE:
+  legitimate libraries with an embedded data table (e.g.
+  `updraftplus/includes/PEAR/PEAR.php`), and plain request-fed shells (the c99 at
+  `FIO-4714`) — a data blob or an `eval($_POST[..])` with nothing left for a
+  *static* tool to decode.
+- **~110 are `sample-dump/bendigital2019_*`.** These are *not* plain: verbose
+  word-salad doc-comments wrap genuine dynamic constructs — `${$var}` variable
+  dispatch and `eval($str)` fed by a blob (e.g. `bendigital2019_03168`, a
+  `Services_JSON` file with an injected `eval($str)` at the tail). The gate keeps
+  them packed; correctly HEAVY.
+
+(An earlier draft of this doc called the whole 110 "plaintext false-positives" —
+that was wrong; inspecting them showed the dynamic dispatch. The honest
+false-positive rate is ~21%, and the readability gate is what recovers it.)
 
 So "decode the leftover strings" — as a generic feature — has **little real
 surface left**. The static folder already handles multi-layer FOPO, base64 /
@@ -80,12 +87,13 @@ could fold if `pack`/`unpack` coverage in the `-x` path is widened. Small,
 narrow payoff; do only if z5encrypt specifically matters.
 
 ## Adjacent, higher-leverage than more decoding: triage precision
-110/139 false-positives means the corpus **triage** (not the decoder) is what
-wastes analyst time. A cheap "readability gate" — if the `-x -u` output
-re-parses and is mostly plain statements with low dynamic-dispatch density,
-downgrade its tier — would remove the WP-core / verbose-library noise and make
-the HEAVY list actually mean "needs decoding". This is what creates the
-*illusion* of leftover encoded strings. **Low–medium effort**, high signal.
+~21% of the still-HEAVY set are scorer false-positives — legitimate libraries
+and plain request-fed shells the raw scorer cannot tell apart from packers. A
+"readability gate" — a sample is still packed only when it BOTH runs computed
+code AND carries an encoded payload feeding it — removes that noise and makes
+the HEAVY list mean "needs decoding". This is what creates the *illusion* of
+leftover encoded strings. **Low–medium effort**, high signal. (Implemented:
+`readabilityVerdict()` in `bin/lib/obfscore.php`, wired into `bin/triage.php`.)
 
 ## Recommendation (ranked)
 1. **G1: `-e` self-reader support.** The only decode gap with a coherent, sizable
