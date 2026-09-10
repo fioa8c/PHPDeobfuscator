@@ -68,7 +68,7 @@ while ($testfile = readdir($d)) {
                 $maxInlineFile = (int) substr($opt, strlen('max-inline-file='));
             }
         }
-        $deobf = new \PHPDeobfuscator\Deobfuscator(false, false, false, in_array('execute-pure', $options, true), $maxInlineFile, in_array('remove-dead-code', $options, true));
+        $deobf = new \PHPDeobfuscator\Deobfuscator(false, false, false, in_array('execute-pure', $options, true), $maxInlineFile, in_array('remove-dead-code', $options, true), in_array('rename-vars', $options, true));
         $deobf->getFilesystem()->write($virtualPath, $code);
         $deobf->setCurrentFilename($virtualPath);
         try {

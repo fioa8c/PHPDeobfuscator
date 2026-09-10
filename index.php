@@ -6,8 +6,8 @@ ini_set('xdebug.var_display_max_depth', -1);
 ini_set('memory_limit', '512M');
 ini_set('xdebug.max_nesting_level', 1000);
 
-function deobfuscate($code, $filename, $dumpOrig, $stripComments = false, $executePure = false, $removeDeadCode = false) {
-    $deobf = new \PHPDeobfuscator\Deobfuscator($dumpOrig, false, $stripComments, $executePure, null, $removeDeadCode);
+function deobfuscate($code, $filename, $dumpOrig, $stripComments = false, $executePure = false, $removeDeadCode = false, $renameVars = false) {
+    $deobf = new \PHPDeobfuscator\Deobfuscator($dumpOrig, false, $stripComments, $executePure, null, $removeDeadCode, $renameVars);
     $cwd = '/var/www/html/';
     $virtualPath = $cwd . basename($filename);
     $deobf->getFilesystem()->write($virtualPath, $code);
@@ -24,7 +24,7 @@ function deobfuscate($code, $filename, $dumpOrig, $stripComments = false, $execu
  * the assembled source, or null when the extension is unavailable / nothing
  * was captured (the caller then falls back to static-only output).
  */
-function peelEvalLayers($code, $filename, $stripComments, $executePure, $removeDeadCode, &$error = null) {
+function peelEvalLayers($code, $filename, $stripComments, $executePure, $removeDeadCode, $renameVars, &$error = null) {
     $peeler = new \PHPDeobfuscator\EvalHook\EvalPeeler();
     if (!$peeler->isAvailable()) {
         $error = "eval-hook extension not found (build php-eval-hook, or set PHPDEOBF_EVALHOOK to its evalhook.so)";
@@ -46,7 +46,7 @@ function peelEvalLayers($code, $filename, $stripComments, $executePure, $removeD
         $out .= "\n// ===== eval() layer {$layer['n']} ({$layer['len']} bytes) =====\n";
         $layerCode = $layer['code'];
         try {
-            list(, $clean) = deobfuscate('<?php ' . $layerCode, $filename, false, $stripComments, $executePure, $removeDeadCode);
+            list(, $clean) = deobfuscate('<?php ' . $layerCode, $filename, false, $stripComments, $executePure, $removeDeadCode, $renameVars);
             $out .= ltrim(preg_replace('/^<\?php\s*/', '', $clean)) . "\n";
         } catch (\Throwable $e) {
             // A layer that will not parse/reduce is still worth showing raw.
@@ -62,7 +62,7 @@ function usage() {
 PHP source-code deobfuscator.
 
 Usage:
-  php {$script} -f <file> [-t] [-o] [-a] [-j] [-c] [-x] [-e] [-u]
+  php {$script} -f <file> [-t] [-o] [-a] [-j] [-c] [-x] [-e] [-u] [-r]
   php {$script} -h
 
 Options:
@@ -77,6 +77,11 @@ Options:
   -u         Remove assignments to variables the reduced code never reads
              (decoder scaffolding). Conservative: skips any scope using
              variable-variables, extract/compact, eval, include or references.
+  -r         Give obfuscated-looking variables readable names when the code
+             proves what they are (source, decoder, callable role, ...). Only
+             evidence-backed renames; unexplained names are left untouched.
+             Conservative: skips any scope using variable-variables, \$GLOBALS,
+             global, extract/compact or closures. Best combined with -u.
   -o         Annotate each reduced expression with its original source.
   -a         Append a security-analysis report in text form.
   -j         Append a security-analysis report in JSON form.
@@ -92,7 +97,7 @@ TXT;
 
 $nodeDumper = new PhpParser\NodeDumper();
 if (php_sapi_name() == 'cli') {
-    $opts = getopt('tof:ajhcxeu');
+    $opts = getopt('tof:ajhcxeur');
     // Explicit help, or run with no arguments at all: print usage to stdout, exit 0.
     if (isset($opts['h']) || ($_SERVER['argc'] ?? 1) <= 1) {
         echo usage();
@@ -114,17 +119,18 @@ if (php_sapi_name() == 'cli') {
     $stripComments = isset($opts['c']);
     $executePure = isset($opts['x']);
     $removeDeadCode = isset($opts['u']);
+    $renameVars = isset($opts['r']);
     $rawInput = file_get_contents($filename);
     if (isset($opts['e'])) {
         $peelError = null;
-        $peeled = peelEvalLayers($rawInput, $filename, $stripComments, $executePure, $removeDeadCode, $peelError);
+        $peeled = peelEvalLayers($rawInput, $filename, $stripComments, $executePure, $removeDeadCode, $renameVars, $peelError);
         if ($peeled !== null) {
             echo $peeled;
         } else {
             fwrite(STDERR, "Note: eval-hook peeling did not run ({$peelError}); using static output.\n");
         }
     }
-    list($tree, $code) = deobfuscate($rawInput, $filename, $orig, $stripComments, $executePure, $removeDeadCode);
+    list($tree, $code) = deobfuscate($rawInput, $filename, $orig, $stripComments, $executePure, $removeDeadCode, $renameVars);
     if (!isset($opts['e'])) {
         echo $code, "\n";
     }
