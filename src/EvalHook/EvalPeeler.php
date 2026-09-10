@@ -122,7 +122,7 @@ class EvalPeeler
     private function run(string $code, string $sampleBasename, string $dir): array
     {
         $sample = $dir . '/' . basename($sampleBasename);
-        file_put_contents($sample, $code);
+        file_put_contents($sample, $this->normalizeLegacyStringOffsets($code));
         $nonce = bin2hex(random_bytes(8));
         file_put_contents($dir . '/harness.php', $this->harnessSource($dir, $sample, $nonce));
 
@@ -256,6 +256,103 @@ if (!function_exists('pfsockopen'))   { function pfsockopen(...$a) { return fals
 if (!function_exists('stream_socket_client')) { function stream_socket_client(...$a) { return false; } }
 if (!function_exists('gethostbyname')) { function gethostbyname($h) { return $h; } }
 PHP;
+        return $out;
+    }
+
+    /**
+     * Rewrite legacy curly-brace string offsets (`$s{$i}`, `$arr[0]{2}`) to the
+     * bracket form (`$s[$i]`, `$arr[0][2]`) so the sandbox's PHP 8 can parse the
+     * sample. This syntax was removed in PHP 8.0, and the huge FOPO / self-reading
+     * shell family (`$name = $s{4}.$s{9}.…;`) is built entirely from it — under
+     * PHP 8 those samples fatal at parse time and never reach their first eval(),
+     * so the peeler captured nothing.
+     *
+     * The rewrite is **byte-length preserving** ('{'->'[' and '}'->']', one char
+     * for one char): critical because these shells also do
+     * `file_get_contents(__FILE__)` and slice themselves by fixed byte offset, so
+     * shifting any byte would break the self-decode. The encoded payload is a
+     * contiguous base64/binary run with no `$var{` token in it, so it is never
+     * touched.
+     *
+     * Conservative: only a '{' that directly follows a variable or a closed
+     * access (`]` / a converted offset `}`) becomes an offset — a '{' after ')'
+     * (an `if (...) {` block) or a string-interpolation brace (`"{$x}"`, `"${x}"`)
+     * is left alone. If the token stream cannot be classified unambiguously the
+     * original source is returned untouched, so a bad rewrite can never be
+     * executed.
+     */
+    public function normalizeLegacyStringOffsets(string $code): string
+    {
+        $tokens = @token_get_all($code);
+        if (!is_array($tokens) || $tokens === []) {
+            return $code;
+        }
+        $out = '';
+        $stack = [];          // 'offset' | 'block' for each open plain '{'
+        $pendingInterp = 0;   // unmatched string-interpolation opens ("{$..}/${..}")
+        $prevWasAccessEnd = false; // prev significant token ends an accessible value
+
+        foreach ($tokens as $tok) {
+            if (is_array($tok)) {
+                $id = $tok[0];
+                $text = $tok[1];
+                if ($id === T_WHITESPACE || $id === T_COMMENT || $id === T_DOC_COMMENT) {
+                    $out .= $text;
+                    continue; // does not change access context
+                }
+                if ($id === T_CURLY_OPEN || $id === T_DOLLAR_OPEN_CURLY_BRACES) {
+                    $pendingInterp++;         // its closing '}' is a plain char token
+                    $out .= $text;
+                    $prevWasAccessEnd = false;
+                    continue;
+                }
+                $out .= $text;
+                // A value we can index: a variable, or the string/array it may sit in.
+                $prevWasAccessEnd = ($id === T_VARIABLE);
+                continue;
+            }
+
+            if ($tok === '{') {
+                if ($prevWasAccessEnd) {
+                    $stack[] = 'offset';
+                    $out .= '[';
+                } else {
+                    $stack[] = 'block';
+                    $out .= '{';
+                }
+                $prevWasAccessEnd = false;
+                continue;
+            }
+            if ($tok === '}') {
+                if ($pendingInterp > 0) {
+                    $pendingInterp--;         // closes a string interpolation
+                    $out .= '}';
+                    $prevWasAccessEnd = false;
+                    continue;
+                }
+                if ($stack === []) {
+                    return $code;             // unbalanced: refuse to rewrite
+                }
+                $kind = array_pop($stack);
+                if ($kind === 'offset') {
+                    $out .= ']';
+                    $prevWasAccessEnd = true;  // `$a{0}{1}` / `$a{0}[1]` chaining
+                } else {
+                    $out .= '}';
+                    $prevWasAccessEnd = false;
+                }
+                continue;
+            }
+
+            $out .= $tok;
+            // `]` and `)` end a value that can be indexed further; only `]` may be
+            // followed by a curly offset (`$a[0]{1}`) — `)` before `{` is a block.
+            $prevWasAccessEnd = ($tok === ']');
+        }
+
+        if ($stack !== [] || $pendingInterp !== 0 || strlen($out) !== strlen($code)) {
+            return $code; // anything unexpected: return the original untouched
+        }
         return $out;
     }
 
