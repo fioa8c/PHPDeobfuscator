@@ -10,7 +10,7 @@ PHP source-code deobfuscator that statically reduces obfuscated PHP by symbolica
 
 - Install deps: `composer install`
 - Run the test suite: `php test.php` (preferred: `php -d error_reporting=E_ALL test.php`). The script discovers every `tests/*.txt` file, runs each `INPUT`/`OUTPUT` block through the full pipeline, and prints `pass`/`failed` per case. There is no PHPUnit, no `--filter`; to run a single case temporarily edit `test.php` or move other test files aside.
-- Deobfuscate a file from CLI: `php index.php -f <file> [-t] [-o] [-a] [-j] [-c] [-x] [-e] [-u]` (`-t` dumps the resulting node tree; `-o` annotates each reduced expression with its original source; `-a`/`-j` append a security-analysis report in text/JSON; `-c` strips the input's comments, running before any pass so `-o`/`-a` annotations are preserved; `-x` enables sandboxed execution of provably pure user functions — see **Pure-function execution** below; `-e` dynamically peels nested `eval()` layers by running the sample under the php-eval-hook extension — see **Eval-hook peeling** below; `-u` removes dead code the reduced program no longer uses — see **Dead-code elimination** below). `-h`, or running with no args, prints usage; a missing/unreadable `-f` prints an error plus usage to stderr and exits non-zero (`usage()` lives in `index.php`).
+- Deobfuscate a file from CLI: `php index.php -f <file> [-t] [-o] [-a] [-j] [-c] [-x] [-e] [-u] [-r]` (`-t` dumps the resulting node tree; `-o` annotates each reduced expression with its original source; `-a`/`-j` append a security-analysis report in text/JSON; `-c` strips the input's comments, running before any pass so `-o`/`-a` annotations are preserved; `-x` enables sandboxed execution of provably pure user functions — see **Pure-function execution** below; `-e` dynamically peels nested `eval()` layers by running the sample under the php-eval-hook extension — see **Eval-hook peeling** below; `-u` removes dead code the reduced program no longer uses — see **Dead-code elimination** below; `-r` gives obfuscated-looking variables evidence-backed readable names — see **Variable renaming** below). `-h`, or running with no args, prints usage; a missing/unreadable `-f` prints an error plus usage to stderr and exits non-zero (`usage()` lives in `index.php`).
 - Web entrypoint: `index.php` also serves a simple textarea form when accessed via SAPI.
 - Docker: `docker build -t phpdeobf . && docker run --rm phpdeobf` runs `php index.php` inside the container.
 
@@ -89,6 +89,39 @@ sample. The extension path defaults next to the repo; override with the
 CLI prints a note to stderr and falls back to static-only output. `bin/evalpeel.php`
 is a standalone CLI wrapper around the same library (`bin/lib/evalpeel.php`).
 
+### Variable renaming (`src/VariableRenamer.php`, opt-in via `-r`)
+
+Off by default (default output stays byte-identical). Runs as the final step of
+`deobfuscate()` (after dead-code elimination) when the `Deobfuscator` is
+constructed with `$renameVars`. It gives an obfuscated-looking variable a
+readable name **only** when the code proves what the variable is about — never a
+sequential `$var1`, which merely trades one meaningless name for another. A
+variable with no evidence, or one whose name already reads clearly, is left
+exactly as found.
+
+Evidence (first assignment/use wins per name): a **source** assignment
+(`$x = $_POST['cmd']` → `$post_cmd`, `getenv('K')` → `env_k`,
+`base64_decode(...)`/gz*/rot13/hex2bin → `$decoded`, `file_get_contents(...)` →
+`$contents`, `explode(...)` → `$parts`); a **value** that is a real PHP function
+name (`$x = "system"` → `$fn_system`); or a **role** (the callable argument of
+`call_user_func`/`array_map`/… → `$callback`, a variable called as a function
+`$x(...)` → `$fn`, a `for` counter → `$i`, a `.=` accumulator → `$buf`).
+`looksObfuscated()` gates which original names are eligible (homoglyph soup,
+hex-ish handles, mixed letter/digit gibberish, consonant-run gibberish).
+
+Like `DeadCodeEliminator` it is a conservative readability pass that must never
+change behaviour. It renames within one scope at a time (file top level, each
+named function/method body) and **abandons the whole scope** on the first sign a
+variable's identity is name-bound or invisible: variable-variables (`$$x`),
+`$GLOBALS`, `global`, `extract`/`compact`/`get_defined_vars`/`parse_str`, or a
+closure/arrow function (which capture enclosing variables *by name*). Nested
+closure and arrow bodies are never renamed. New names are collision-checked
+against every variable already present in the scope, so two distinct variables
+are never merged (`$decoded` present ⇒ the new one becomes `$decoded2`). Because
+it runs on the reduced AST, a `$$k` the reducer already resolved to a concrete
+`$name` is renamed consistently with every other occurrence; only a `$$k` still
+unresolved at the end is a hazard. Fixture coverage: `tests/rename-vars.txt`.
+
 ### Reducers
 
 `Reducer` (interface in `src/Reducer.php`) declares which node classes it handles via `getNodeClasses()`. `AbstractReducer` (`src/Reducer/AbstractReducer.php`) implements this with reflection: **any method named `reduce<Anything>(SomeNode $node)` is auto-registered as the handler for `SomeNode`.** Each node class can only be claimed by one reducer — `ReducerVisitor::addReducer` and `FuncCallReducer::addReducer` both throw on conflict. To add support for a new node type, add a `reduce*` method on the appropriate reducer (or add a new reducer in `Deobfuscator::__construct`).
@@ -123,6 +156,6 @@ Reducers receive `ValRef[]` arguments; `Utils::refsToValues` unwraps them and `U
 
 Tests live in `tests/*.txt` as plain-text fixtures. Each file contains repeated `INPUT` / `OUTPUT` blocks separated by those literal lines. The runner prepends `<?php\n` to each input and compares the pretty-printed deobfuscation against `<?php\n\n` + the expected output. To add a test, append a new `INPUT` / `OUTPUT` pair to the relevant file (`reducers.txt`, `variables.txt`, `goto-tests.txt`, `filesystem.txt`).
 
-A test may include an `OPTIONS` block (same INPUT/OUTPUT delimiter style) listing per-case flags: `execute-pure` constructs the `Deobfuscator` with pure-function execution enabled, and `max-inline-file=<bytes>` sets the file-read inlining cap so a fixture can exercise it without a huge input. See `tests/pure-exec.txt`, which covers both a decoder that must reduce and impure functions that must be left intact.
+A test may include an `OPTIONS` block (same INPUT/OUTPUT delimiter style) listing per-case flags: `execute-pure` constructs the `Deobfuscator` with pure-function execution enabled, `remove-dead-code` enables the `-u` pass, `rename-vars` enables the `-r` pass (they can be combined in one block, one per line), and `max-inline-file=<bytes>` sets the file-read inlining cap so a fixture can exercise it without a huge input. See `tests/pure-exec.txt`, which covers both a decoder that must reduce and impure functions that must be left intact, and `tests/rename-vars.txt` for evidence-driven renaming and its hazard bails.
 
 When a fixture fails the runner prints the expected vs. got bodies prefixed with `[]:` per line — it does not stop on first failure.
