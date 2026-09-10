@@ -187,3 +187,29 @@ foreach ($normCases as $i => $case) {
         echo "Got:      {$got}\n";
     }
 }
+
+// --- readabilityVerdict() unit cases (bin/lib/obfscore.php) ----------------
+// The triage readability gate: a deobfuscated output still "needs decoding" only
+// when it BOTH runs computed code AND carries an encoded payload feeding it. A
+// legitimate library with a data blob, or a plain request-fed backdoor, is
+// READABLE. Pure function, no extension needed.
+require_once __DIR__ . '/bin/lib/obfscore.php';
+$b64run = str_repeat('QUJDREVGR0g', 30); // a long base64-looking run (>200 chars)
+$readCases = array(
+    array('<?php function f($x){ return strlen($x); } echo f($_GET["a"]);', true),   // plain code
+    array('<?php eval($_POST["c"]);', true),                                          // request-fed, no payload
+    array('<?php $img="' . $b64run . '"; echo strlen($img);', true),                  // data blob, no computed-exec
+    array('<?php echo array_map("strtoupper", $rows); $s="' . $b64run . '"; echo $s;', true), // legit callback + blob
+    array('<?php eval(base64_decode("' . $b64run . '"));', false),                    // computed-exec + payload
+    array('<?php $f="ba"."se64_decode"; eval($f("' . $b64run . '"));', false),        // dynamic call + payload
+);
+foreach ($readCases as $i => $case) {
+    $name = 'readability-verdict/' . ($i + 1);
+    $v = readabilityVerdict($case[0]);
+    if ($v['readable'] === $case[1]) {
+        echo "Test $name pass\n";
+    } else {
+        echo "Test $name failed:\n";
+        echo 'Expected readable=' . ($case[1] ? 'true' : 'false') . ', got ' . ($v['readable'] ? 'true' : 'false') . " ({$v['reason']})\n";
+    }
+}
