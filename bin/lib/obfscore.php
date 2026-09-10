@@ -146,3 +146,80 @@ function looksLikePHP(string $content): bool
     return (bool)preg_match('/<\?(?:php\b|=|\s)/i', substr($content, 0, 65536))
         || (bool)preg_match('/^#!.*php/', substr($content, 0, 200));
 }
+
+/**
+ * Does this (already-deobfuscated) code still NEED decoding, or is it as readable
+ * as a static tool can make it? The obfuscation scorer answers "how obfuscated
+ * does this look", which over-counts legitimate code: WordPress core with an
+ * embedded base64 data table, or a verbose library that calls `base64_decode`
+ * and `array_map`, both score HEAVY though there is nothing left to peel. This
+ * is the triage discriminator the scorer lacks.
+ *
+ * A file is "still packed" only when it BOTH runs computed code AND carries an
+ * encoded payload that could feed it:
+ *   - computed-code execution: `eval`, `assert(<expr>)`, `create_function`,
+ *     `preg_replace('/…/e')`, a variable used as a callable (`$f(...)`,
+ *     `new $c`), or a variable-variable — the marks of an active unpacker.
+ *     Deliberately NOT `array_map`/`call_user_func`/`ob_start`/
+ *     `preg_replace_callback`, which pervade legitimate code (this is where the
+ *     scorer's `exec` over-counts).
+ *   - an encoded payload: a long base64/hex run, dense `\xNN`/`chr()` building,
+ *     or bitwise-string ops.
+ * Neither alone means "needs decoding": an embedded blob with no computed-exec
+ * is a data asset; an `eval($_POST[...])` with no encoded blob is a plain
+ * (already-readable) request-fed backdoor. Both present is a packer.
+ *
+ * Measured on `-x -u` output: WordPress core / verbose-library false-positives
+ * classify readable, while genuinely-still-packed samples (FOPO wrappers, XXTEA,
+ * z5encrypt) do not.
+ *
+ * @return array{readable:bool, tokenizable:bool, computed_exec:bool, payload:bool, reason:string}
+ */
+function readabilityVerdict(string $code): array
+{
+    $r = ['readable' => false, 'tokenizable' => false, 'computed_exec' => false, 'payload' => false, 'reason' => ''];
+
+    $tokens = @token_get_all($code);
+    if (!is_array($tokens) || $tokens === []) {
+        $r['reason'] = 'untokenizable';
+        return $r;
+    }
+    $r['tokenizable'] = true;
+
+    try {
+        [$codeText] = obfTokenize($code);
+    } catch (\Throwable $e) {
+        $codeText = $code;
+    }
+    $f = obfFeatures($code);
+
+    // Computed-code execution: the marks of a live unpacker (narrower than the
+    // scorer's `exec`, which also counts legitimate callbacks).
+    $computedExec =
+        preg_match('/\beval\s*[({]/i', $codeText)                  // eval(...) or an EvalBlock `eval {`
+        || preg_match('/\bassert\s*\(\s*(?![\'"])/i', $codeText)   // assert of a non-literal
+        || preg_match('/\bcreate_function\s*\(/i', $codeText)
+        || preg_match('/\bpreg_replace\s*\(\s*["\'][^"\']{0,80}\/[a-z]*e[a-z]*["\']/i', $code)
+        || preg_match('/\$\w+\s*\(/', $codeText)                    // $f(...) dynamic call
+        || preg_match('/\bnew\s+\$\w+/', $codeText)                 // new $cls
+        || preg_match('/\$\$\w+|\$\{/', $codeText);                 // variable-variables
+    $r['computed_exec'] = (bool) $computedExec;
+
+    // An encoded payload that such a sink could decode and run.
+    $payload =
+        ($f['b64runs'] >= 1 && $f['maxrun'] >= 200)
+        || $f['hexruns'] >= 1
+        || $f['hexesc'] >= 40
+        || $f['concatchr'] >= 8
+        || $f['chrs'] >= 12
+        || $f['bitops'] >= 3;
+    $r['payload'] = (bool) $payload;
+
+    if ($computedExec && $payload) {
+        $r['reason'] = 'computed-exec + encoded payload (still packed)';
+        return $r;
+    }
+    $r['readable'] = true;
+    $r['reason'] = $computedExec ? 'computed-exec but no encoded payload' : ($payload ? 'encoded blob but no computed-exec' : 'plain code');
+    return $r;
+}
