@@ -126,3 +126,13 @@ $h = new class
     }
 };
 echo $h->f();
+INPUT
+eval(base64_decode("Pz48aDE+eDwvaDE+"));
+OUTPUT
+eval /* PHPDeobfuscator eval output */ {
+    ?><h1>x</h1><?php 
+};
+INPUT
+eval(base64_decode("dGhpcyBpcyBub3QgcGhwIHt7ew=="));
+OUTPUT
+eval("this is not php {{{");
