@@ -222,12 +222,22 @@ PHP;
      * builtin from the function table entirely, so a call to it is a fatal
      * "undefined function" that stops the run before the next eval() layer.
      * A no-op stub keeps the sample moving while still doing nothing real.
+     *
+     * The same trick covers builtins PHP itself removed that old shells still
+     * call before their first eval(): the `magic_quotes` family (gone in PHP 8)
+     * gets benign stubs, `each()` (gone in PHP 8) a working shim, and
+     * `create_function()` (gone in PHP 8) a shim that rebuilds the function via
+     * eval() — deliberately, because the created body is itself a payload the
+     * hook should capture.
      */
     private function stubSource(): string
     {
-        // NB: no eval() here - the hook captures every eval(), so a stub that
-        // used eval() to define itself would show up as a spurious layer.
+        // NB: the benign no-op stubs below never use eval() - the hook captures
+        // every eval(), so a benign stub that eval()'d to define itself would
+        // show up as a spurious layer. create_function() is the one intentional
+        // exception (its eval reveals the created function body).
         $names = [
+            'set_magic_quotes_runtime', 'magic_quotes_runtime',
             'usleep', 'sleep', 'set_time_limit', 'ini_set', 'ini_alter', 'ini_restore', 'error_log',
             'header', 'header_remove', 'setcookie', 'session_start', 'mail', 'putenv', 'unlink', 'rename',
             'copy', 'mkdir', 'rmdir', 'touch', 'chmod', 'chown', 'chgrp', 'curl_setopt', 'curl_setopt_array',
@@ -255,6 +265,10 @@ if (!function_exists('fsockopen'))    { function fsockopen(...$a) { return false
 if (!function_exists('pfsockopen'))   { function pfsockopen(...$a) { return false; } }
 if (!function_exists('stream_socket_client')) { function stream_socket_client(...$a) { return false; } }
 if (!function_exists('gethostbyname')) { function gethostbyname($h) { return $h; } }
+if (!function_exists('get_magic_quotes_gpc'))     { function get_magic_quotes_gpc() { return false; } }
+if (!function_exists('get_magic_quotes_runtime')) { function get_magic_quotes_runtime() { return false; } }
+if (!function_exists('each')) { function each(&$a) { $k = key($a); if ($k === null) { return false; } $v = current($a); next($a); return [1 => $v, 'value' => $v, 0 => $k, 'key' => $k]; } }
+if (!function_exists('create_function')) { function create_function($args, $code) { return eval("return function({$args}) { {$code} };"); } }
 PHP;
         return $out;
     }
