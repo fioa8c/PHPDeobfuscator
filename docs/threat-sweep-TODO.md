@@ -1,5 +1,49 @@
 # Threat-library sweep — findings and TODO (2026-09-09)
 
+## Full-corpus regression sweep (2026-09-10)
+
+Re-ran the whole HEAVY tier through the current pipeline to confirm no
+regressions at scale and quantify cumulative progress. Tooling: `bin/sweep.php`
++ `bin/_work.php` (static, `--exec 0`) over all HEAVY in `report/scan/all.jsonl`,
+then `bin/triage.php` (which applies the `readabilityVerdict()` gate). A separate
+3,000-file `--exec 1` (sandbox) sample exercised the `-x` path.
+
+**Robustness invariant holds at scale: 0 CRASH, 0 TIMEOUT across all 27,891 HEAVY
+files (and the 3,000-file `-x` sample).** The only non-success statuses are
+`PARSE_ERROR` (0.9%, non-PHP / malformed inputs — a clean classification, not a
+crash).
+
+Outcome breakdown (static pipeline, after the readability gate), 27,891 files:
+
+| status | count | % | meaning |
+|---|---|---|---|
+| IMPROVED | 12,254 | 43.9 | score at least halved |
+| READABLE | 8,089 | 29.0 | nothing left for a *static* tool to decode (gate) |
+| RESIDUAL | 3,496 | 12.5 | partially reduced |
+| UNREDUCED | 2,170 | 7.8 | not reduced |
+| PEELED | 824 | 3.0 | decoder scaffolding removed |
+| CLEAN | 793 | 2.8 | fully plain / LIGHT |
+| PARSE_ERROR | 257 | 0.9 | non-PHP / malformed |
+
+So **~78.7% are handled** (IMPROVED + READABLE + PEELED + CLEAN) and ~20.3%
+(RESIDUAL + UNREDUCED) still carry a payload a static pass could not finish.
+
+Caveats:
+- The obfuscation **score is a scanner heuristic, not a quality measure**:
+  deobfuscation often *raises* it (inlining a decoded blob expands the file and
+  exposes previously-hidden calls), so aggregate score-reduction (~15%) understates
+  real progress — the status breakdown is the honest signal.
+- `_work.php` runs the **static** pipeline only (no `-e`/`-u`/`-r`). Most of the
+  RESIDUAL/UNREDUCED remainder is the `decoders,b64runs,chrs` family —
+  runtime-keyed decodes (undecidable) and `__FILE__` self-readers, which the
+  full tool now peels dynamically with `-e` (see below). So the fielded tool does
+  better than these static-only numbers on that bucket.
+
+Remaining-work clusters (residual primitives still present):
+`decoders,b64runs,chrs` dominates (≈2,875 RESIDUAL + ≈1,304 UNREDUCED). These are
+the runtime-keyed / self-reading / custom-decode-loop cases characterised in
+`docs/decode-gaps-scope.md` — not a generic-string-decoder gap.
+
 ## Fixed this session
 
 - **Token-aware scorer (`bin/lib/obfscore.php`, item 9)** — structural signals
