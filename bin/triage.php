@@ -6,6 +6,10 @@
  * Usage: php bin/triage.php <results.jsonl> [--md out.md] [--examples 5]
  */
 declare(strict_types=1);
+// Corpus-scale batch tool: it holds every result row in memory and re-tokenises
+// each deobfuscated output for the readability gate. The default 128M limit is
+// exhausted on a full sweep (tens of thousands of files), so give it headroom.
+ini_set('memory_limit', '1G');
 $path = $argv[1] ?? ''; $md = ''; $examples = 5;
 for ($i = 2; $i < count($argv); $i++) {
     if ($argv[$i] === '--md') $md = $argv[++$i];

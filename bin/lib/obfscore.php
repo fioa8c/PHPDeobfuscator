@@ -179,6 +179,15 @@ function readabilityVerdict(string $code): array
 {
     $r = ['readable' => false, 'tokenizable' => false, 'computed_exec' => false, 'payload' => false, 'reason' => ''];
 
+    // token_get_all() can use 20-30x the input in memory; on a multi-megabyte
+    // output it exhausts the default limit. Refuse to classify something we
+    // cannot cheaply inspect and leave `readable` false, so a huge output is
+    // never silently downgraded to READABLE (which could hide a payload).
+    if (strlen($code) > 512 * 1024) {
+        $r['reason'] = 'too large to classify cheaply';
+        return $r;
+    }
+
     $tokens = @token_get_all($code);
     if (!is_array($tokens) || $tokens === []) {
         $r['reason'] = 'untokenizable';
