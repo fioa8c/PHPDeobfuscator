@@ -2,58 +2,18 @@
 
 require 'vendor/autoload.php';
 
+use PHPDeobfuscator\Pipeline;
+
 ini_set('xdebug.var_display_max_depth', -1);
 ini_set('memory_limit', '512M');
 ini_set('xdebug.max_nesting_level', 1000);
 
 function deobfuscate($code, $filename, $dumpOrig, $stripComments = false, $executePure = false, $removeDeadCode = false, $renameVars = false) {
-    $deobf = new \PHPDeobfuscator\Deobfuscator($dumpOrig, false, $stripComments, $executePure, null, $removeDeadCode, $renameVars);
-    $cwd = '/var/www/html/';
-    $virtualPath = $cwd . basename($filename);
-    $deobf->getFilesystem()->write($virtualPath, $code);
-    $deobf->setCurrentFilename($virtualPath);
-    $tree = $deobf->parse($code);
-    $tree = $deobf->deobfuscate($tree);
-    $newCode = $deobf->prettyPrint($tree);
-    return array($tree, $newCode);
+    return Pipeline::deobfuscate($code, $filename, $dumpOrig, $stripComments, $executePure, $removeDeadCode, $renameVars);
 }
 
-/**
- * Dynamically peel eval() layers with the php-eval-hook sandbox, then run each
- * captured layer through the normal static pipeline for readability. Returns
- * the assembled source, or null when the extension is unavailable / nothing
- * was captured (the caller then falls back to static-only output).
- */
 function peelEvalLayers($code, $filename, $stripComments, $executePure, $removeDeadCode, $renameVars, &$error = null) {
-    $peeler = new \PHPDeobfuscator\EvalHook\EvalPeeler();
-    if (!$peeler->isAvailable()) {
-        $error = "eval-hook extension not found (build php-eval-hook, or set PHPDEOBF_EVALHOOK to its evalhook.so)";
-        return null;
-    }
-    $result = $peeler->peel($code, basename($filename));
-    if (empty($result['layers'])) {
-        $error = !empty($result['error'])
-            ? $result['error']
-            : 'no eval() layers were captured'
-              . ($result['killed'] ? ' (sandbox timed out)' : '')
-              . (trim($result['stderr']) !== '' ? '; sandbox stderr: ' . substr(trim($result['stderr']), 0, 200) : '');
-        return null;
-    }
-    $out = "<?php\n\n// Dynamically unpacked with php-eval-hook: "
-        . count($result['layers']) . " eval() layer(s) captured in {$result['secs']}s.\n"
-        . "// Each layer is the source passed to eval(), then statically deobfuscated.\n";
-    foreach ($result['layers'] as $layer) {
-        $out .= "\n// ===== eval() layer {$layer['n']} ({$layer['len']} bytes) =====\n";
-        $layerCode = $layer['code'];
-        try {
-            list(, $clean) = deobfuscate('<?php ' . $layerCode, $filename, false, $stripComments, $executePure, $removeDeadCode, $renameVars);
-            $out .= ltrim(preg_replace('/^<\?php\s*/', '', $clean)) . "\n";
-        } catch (\Throwable $e) {
-            // A layer that will not parse/reduce is still worth showing raw.
-            $out .= "// (layer left raw: " . $e->getMessage() . ")\n" . rtrim($layerCode) . "\n";
-        }
-    }
-    return $out;
+    return Pipeline::peelEvalLayers($code, $filename, $stripComments, $executePure, $removeDeadCode, $renameVars, $error);
 }
 
 function usage() {
