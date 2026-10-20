@@ -24,6 +24,21 @@ class SecurityAnalysisVisitor extends \PhpParser\NodeVisitorAbstract
     private array $taintStack = [[]];
 
     /**
+     * Return-value taint per free function: lowercased simple name => set of
+     * source labels (used as a set) that the function's `return` expressions can
+     * carry. Computed once in beforeTraverse() so a sink fed by such a function
+     * is flagged no matter whether the function is defined before or after it.
+     */
+    private array $funcReturnTaint = [];
+
+    /**
+     * Stack used only by the beforeTraverse() pre-pass: the current function
+     * name whose `return`s should be attributed, or null inside a
+     * method/closure/arrow (whose returns are not keyed).
+     */
+    private array $returnFrameStack = [];
+
+    /**
      * Stack of name-context entries pushed by Namespace_/Class_/Trait_/Interface_.
      * Each entry: ['kind' => 'namespace'|'class'|'trait'|'interface'|'anon_class', 'name' => string, 'line' => int].
      */
@@ -37,6 +52,93 @@ class SecurityAnalysisVisitor extends \PhpParser\NodeVisitorAbstract
     public function getFindings(): Findings
     {
         return $this->findings;
+    }
+
+    /**
+     * Pre-pass: derive each free function's return-value taint before the main
+     * traversal, so forward references (`eval(dec($x)); function dec(){...}`,
+     * which PHP hoists) and transitive chains are caught. A bounded fixpoint:
+     * each pass re-derives return taint consulting the previous pass's results,
+     * so `function a(){return b();}` picks up b() on the next iteration. Labels
+     * come from a finite set and only ever grow, so it converges well inside the
+     * cap. Runs before ParentConnectingVisitor, so it must not touch anything
+     * that depends on the `parent` attribute (it only uses recordTaint/collectTaint).
+     */
+    public function beforeTraverse(array $nodes)
+    {
+        for ($iter = 0; $iter < 8; $iter++) {
+            $this->taintStack = [[]];
+            $this->returnFrameStack = [];
+            $changed = false;
+            foreach ($nodes as $node) {
+                if ($node instanceof Node) {
+                    $this->walkReturnTaint($node, $changed);
+                }
+            }
+            if (!$changed) {
+                break;
+            }
+        }
+        // Leave the scope stacks pristine for the real traversal.
+        $this->taintStack = [[]];
+        $this->frameStack = [];
+        $this->returnFrameStack = [];
+        $this->nameStack = [];
+        return null;
+    }
+
+    /**
+     * Recursive mirror of enter/leave for the pre-pass: maintains the per-scope
+     * taint map via recordTaint() and records the taint of each `return`
+     * expression against the enclosing free function.
+     */
+    private function walkReturnTaint(Node $node, bool &$changed): void
+    {
+        $isFunc = $node instanceof Stmt\Function_;
+        $isScope = $isFunc
+            || $node instanceof Stmt\ClassMethod
+            || $node instanceof Expr\Closure
+            || $node instanceof Expr\ArrowFunction;
+
+        if ($isScope) {
+            $this->taintStack[] = [];
+            $this->returnFrameStack[] = $isFunc ? strtolower($node->name->toString()) : null;
+        }
+
+        // Same straight-line forward propagation the main pass uses.
+        $this->recordTaint($node);
+
+        if ($node instanceof Stmt\Return_ && $node->expr !== null && !empty($this->returnFrameStack)) {
+            $fn = end($this->returnFrameStack);
+            if (is_string($fn)) {
+                $labels = [];
+                $this->collectTaint($node->expr, $labels);
+                foreach ($labels as $label => $_) {
+                    if (!isset($this->funcReturnTaint[$fn][$label])) {
+                        $this->funcReturnTaint[$fn][$label] = true;
+                        $changed = true;
+                    }
+                }
+            }
+        }
+
+        foreach ($node->getSubNodeNames() as $sub) {
+            $child = $node->$sub;
+            if ($child instanceof Node) {
+                $this->walkReturnTaint($child, $changed);
+            } elseif (is_array($child)) {
+                foreach ($child as $c) {
+                    if ($c instanceof Node) {
+                        $this->walkReturnTaint($c, $changed);
+                    }
+                }
+            }
+        }
+
+        if ($isScope) {
+            array_pop($this->taintStack);
+            array_pop($this->returnFrameStack);
+        }
     }
 
     public function enterNode(Node $node)
@@ -166,6 +268,15 @@ class SecurityAnalysisVisitor extends \PhpParser\NodeVisitorAbstract
                     } elseif (preg_match('#^\s*php://(input|stdin)#i', $arg0->value)) {
                         $found['request body (php://input)'] = true;
                     }
+                }
+            }
+            // A user function whose body derives its return value from a source
+            // (computed in beforeTraverse()) taints its result even when called
+            // with clean arguments. Additive: we still recurse into the args
+            // below, so a tainted argument is also picked up.
+            if (isset($this->funcReturnTaint[$fn])) {
+                foreach ($this->funcReturnTaint[$fn] as $label => $_) {
+                    $found[$label] = true;
                 }
             }
         }
