@@ -103,3 +103,137 @@ function later()
     global $g;
     return "f";
 }
+
+INPUT
+$GLOBALS['hp'] = ['o4' => 'openssl_decrypt', 'q9' => 'shell_exec', 'n' => 42];
+$fn = $GLOBALS['hp']['o4'];
+$cmp = $fn === $GLOBALS['hp']['q9'];
+$list = [$GLOBALS['hp']['q9'], 'k' => $GLOBALS['hp']['o4']];
+$pick = $GLOBALS['hp']['n'] ? $GLOBALS['hp']['o4'] : $GLOBALS['hp']['q9'];
+echo $GLOBALS['hp']['o4'];
+function f()
+{
+    return $GLOBALS['hp']['q9'];
+}
+
+OUTPUT
+$GLOBALS['hp'] = ['o4' => 'openssl_decrypt', 'q9' => 'shell_exec', 'n' => 42];
+$fn = "openssl_decrypt";
+$cmp = false;
+$list = ["shell_exec", 'k' => "openssl_decrypt"];
+$pick = "openssl_decrypt";
+echo "openssl_decrypt";
+function f()
+{
+    return "shell_exec";
+}
+
+INPUT
+$GLOBALS['hp'] = ['o4' => 'openssl_decrypt', 'n' => 42];
+$GLOBALS['hp']['o4'] = 'strrev';
+$GLOBALS['hp']['n']++;
+$GLOBALS['hp']['n'] .= 'x';
+$r = &$GLOBALS['hp']['o4'];
+unset($GLOBALS['hp']['n']);
+$a = isset($GLOBALS['hp']['o4']);
+$b = empty($GLOBALS['hp']['o4']);
+list($GLOBALS['hp']['o4']) = ['strrev'];
+[$GLOBALS['hp']['o4'], [$GLOBALS['hp']['n']]] = ['strrev', [1]];
+foreach ($arr as $GLOBALS['hp']['n'] => $GLOBALS['hp']['o4']) {
+}
+foo($GLOBALS['hp']['o4']);
+foo(&$GLOBALS['hp']['o4']);
+$f = function () {
+    sort($GLOBALS['hp']['o4']);
+};
+
+OUTPUT
+$GLOBALS['hp'] = ['o4' => 'openssl_decrypt', 'n' => 42];
+$GLOBALS['hp']['o4'] = 'strrev';
+$GLOBALS['hp']['n']++;
+$GLOBALS['hp']['n'] = "43x";
+$r =& $GLOBALS['hp']['o4'];
+unset($GLOBALS['hp']['n']);
+$a = isset($GLOBALS['hp']['o4']);
+$b = empty($GLOBALS['hp']['o4']);
+list($GLOBALS['hp']['o4']) = ['strrev'];
+[$GLOBALS['hp']['o4'], [$GLOBALS['hp']['n']]] = ['strrev', [1]];
+foreach ($arr as $GLOBALS['hp']['n'] => $GLOBALS['hp']['o4']) {
+}
+foo($GLOBALS['hp']['o4']);
+foo(&$GLOBALS['hp']['o4']);
+$f = function () {
+    sort($GLOBALS['hp']['o4']);
+};
+
+INPUT
+$k = 'strrev';
+if ($c) {
+    $k = 'strtoupper';
+}
+$fn = $GLOBALS['k'];
+echo $GLOBALS['k'];
+
+OUTPUT
+$k = 'strrev';
+if ($c) {
+    $k = 'strtoupper';
+}
+$fn = $GLOBALS['k'];
+echo $GLOBALS['k'];
+
+INPUT
+$GLOBALS['hp'] = ['o4' => 'strrev'];
+if ($c) {
+    $GLOBALS['hp'] = ['o4' => 'strtoupper'];
+}
+$fn = $GLOBALS['hp']['o4'];
+echo $GLOBALS['hp']['o4'];
+
+OUTPUT
+$GLOBALS['hp'] = ['o4' => 'strrev'];
+if ($c) {
+    $GLOBALS['hp'] = ['o4' => 'strtoupper'];
+}
+$fn = $GLOBALS['hp']['o4'];
+echo $GLOBALS['hp']['o4'];
+
+INPUT
+$GLOBALS['hp'] = ['o4' => 'strrev'];
+function g()
+{
+    if ($c) {
+        $GLOBALS['hp']['o4'] = 'strtoupper';
+    }
+    return $GLOBALS['hp']['o4'];
+}
+
+OUTPUT
+$GLOBALS['hp'] = ['o4' => 'strrev'];
+function g()
+{
+    if ($c) {
+        $GLOBALS['hp']['o4'] = 'strtoupper';
+    }
+    return $GLOBALS['hp']['o4'];
+}
+
+INPUT
+$GLOBALS['hp'] = ['o4' => 'strrev'];
+function h($x)
+{
+    $fn = $GLOBALS['hp']['o4'];
+    return $fn($x);
+}
+echo h($_GET['x']);
+
+OPTIONS
+remove-dead-code
+
+OUTPUT
+$GLOBALS['hp'] = ['o4' => 'strrev'];
+function h($x)
+{
+    return strrev($x);
+}
+echo h($_GET['x']);

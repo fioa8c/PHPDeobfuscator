@@ -22,6 +22,6 @@ OUTPUT
 $GLOBALS['sep'] = '-';
 function glue($a, $b)
 {
-    return $a . $GLOBALS['sep'] . $b;
+    return $a . "-" . $b;
 }
 $r = "foo-bar";
