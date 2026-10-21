@@ -276,3 +276,86 @@ OUTPUT
 
 $f = "echo 1;";
 $f();
+INPUT
+
+$fn = "decode_it";
+switch ($a) {
+    case 'x':
+        $n = $fn("hello");
+        break;
+}
+
+OUTPUT
+
+$fn = "decode_it";
+switch ($a) {
+    case 'x':
+        $n = decode_it("hello");
+        break;
+}
+
+INPUT
+
+$GLOBALS['hp'] = ['cb' => "decode_it"];
+switch ($a) {
+    case 'x':
+        $fn = $GLOBALS['hp']['cb'];
+        $n = $fn("hello");
+        break;
+}
+
+OUTPUT
+
+$GLOBALS['hp'] = ['cb' => "decode_it"];
+switch ($a) {
+    case 'x':
+        $fn = $GLOBALS['hp']['cb'];
+        $n = decode_it("hello");
+        break;
+}
+
+INPUT
+
+$x = 1;
+switch ($a) {
+    case 'p':
+        $x = 2;
+    case 'q':
+        echo $x;
+        break;
+}
+
+OUTPUT
+
+$x = 1;
+switch ($a) {
+    case 'p':
+        $x = 2;
+    case 'q':
+        echo $x;
+        break;
+}
+
+INPUT
+
+$GLOBALS['k'] = "a";
+switch ($a) {
+    case 'p':
+        $GLOBALS['k'] = "b";
+        break;
+    case 'q':
+        echo $GLOBALS['k'];
+        break;
+}
+
+OUTPUT
+
+$GLOBALS['k'] = "a";
+switch ($a) {
+    case 'p':
+        $GLOBALS['k'] = "b";
+        break;
+    case 'q':
+        echo $GLOBALS['k'];
+        break;
+}
