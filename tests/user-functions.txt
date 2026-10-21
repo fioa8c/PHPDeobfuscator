@@ -25,3 +25,84 @@ function glue($a, $b)
     return $a . "-" . $b;
 }
 $r = "foo-bar";
+INPUT
+function d($s) { file_put_contents("/tmp/x", $s); return base64_decode($s); }
+echo d("aGk=");
+OUTPUT
+function d($s)
+{
+    file_put_contents("/tmp/x", $s);
+    return base64_decode($s);
+}
+echo d("aGk=");
+INPUT
+function f() { echo "side effect"; return "openssl_decrypt"; }
+f();
+$x = f();
+OUTPUT
+function f()
+{
+    echo "side effect";
+    return "openssl_decrypt";
+}
+f();
+$x = f();
+INPUT
+function h($x) { if ($x) { return 1; } return 2; }
+echo h(1);
+OUTPUT
+function h($x)
+{
+    if ($x) {
+        return 1;
+    }
+    return 2;
+}
+echo h(1);
+INPUT
+function g($s) { $a = substr($s, 0, 2); $b = strrev($a); return $b . "!"; }
+echo g("hello");
+OUTPUT
+function g($s)
+{
+    $a = substr($s, 0, 2);
+    $b = strrev($a);
+    return $b . "!";
+}
+echo "eh!";
+INPUT
+$d = function ($s) { echo "x"; return strrev($s); };
+echo $GLOBALS["d"]("ab");
+OUTPUT
+$d = function ($s) {
+    echo "x";
+    return strrev($s);
+};
+echo $GLOBALS["d"]("ab");
+INPUT
+function k() { global $kk; return $kk . "!"; }
+$kk = "v";
+echo k();
+OUTPUT
+function k()
+{
+    global $kk;
+    return $kk . "!";
+}
+$kk = "v";
+echo "v!";
+INPUT
+function inner($s) { echo "io"; return strrev($s); }
+function outer($s) { return inner($s) . "!"; }
+echo outer("ab");
+OUTPUT
+function inner($s)
+{
+    echo "io";
+    return strrev($s);
+}
+function outer($s)
+{
+    return inner($s) . "!";
+}
+echo outer("ab");
