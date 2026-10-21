@@ -187,30 +187,8 @@ class FuncCallReducer extends AbstractReducer
         } catch (\Throwable $e) {
             return null;
         }
-        if (count($stmts) !== 1 || !($stmts[0] instanceof Node\Stmt\Expression)) {
-            return null;
-        }
-        $reducedClosure = $stmts[0]->expr;
-        if (!($reducedClosure instanceof Node\Expr\Closure)) {
-            return null;
-        }
-        $bodyStmts = $reducedClosure->stmts;
-        if (empty($bodyStmts)) {
-            return null;
-        }
-        $last = end($bodyStmts);
-        if (!($last instanceof Node\Stmt\Return_) || $last->expr === null) {
-            return null;
-        }
-        try {
-            $value = Utils::getValue($last->expr);
-        } catch (\PHPDeobfuscator\Exceptions\BadValueException $e) {
-            return null;
-        }
-        if (is_array($value) || is_object($value) || is_resource($value)) {
-            return null;
-        }
-        return Utils::scalarToNode($value);
+        $value = $this->extractInlinedReturn($stmts);
+        return $value === null ? null : Utils::scalarToNode($value);
     }
 
     /**
@@ -494,6 +472,16 @@ class FuncCallReducer extends AbstractReducer
     /**
      * Returns the scalar an inlined closure body returns, or null when the body
      * did not reduce to a closure ending in a single provable scalar `return`.
+     *
+     * Replacing the call with that scalar deletes every other statement of the
+     * body from the program, so each of them must be provably inert: the
+     * parameter bindings and other `$var = <pure expr>;` stores, bare pure
+     * expression statements, `global` imports and no-ops. Anything else - a
+     * residual call (`file_put_contents(...)`, `mail(...)`), `echo`, an `if`
+     * holding an earlier `return` - means the call has effects (or a value)
+     * the last `return` does not capture, and the call stays as written. This
+     * also keeps the `-a` report honest: a sink inlined away would otherwise be
+     * reported as dormant.
      */
     private function extractInlinedReturn(array $stmts)
     {
@@ -512,6 +500,11 @@ class FuncCallReducer extends AbstractReducer
         if (!($last instanceof Node\Stmt\Return_) || $last->expr === null) {
             return null;
         }
+        for ($i = 0, $n = count($bodyStmts) - 1; $i < $n; $i++) {
+            if (!$this->isInertStatement($bodyStmts[$i])) {
+                return null;
+            }
+        }
         try {
             $value = Utils::getValue($last->expr);
         } catch (\PHPDeobfuscator\Exceptions\BadValueException $e) {
@@ -521,6 +514,23 @@ class FuncCallReducer extends AbstractReducer
             return null;
         }
         return $value;
+    }
+
+    /** A statement whose removal from an inlined body cannot change behaviour. */
+    private function isInertStatement(Node $stmt): bool
+    {
+        if ($stmt instanceof Node\Stmt\Nop || $stmt instanceof Node\Stmt\Global_) {
+            return true;
+        }
+        if (!($stmt instanceof Node\Stmt\Expression)) {
+            return false;
+        }
+        $expr = $stmt->expr;
+        if ($expr instanceof Node\Expr\Assign) {
+            return $expr->var instanceof Node\Expr\Variable && is_string($expr->var->name)
+                && Utils::isSideEffectFree($expr->expr);
+        }
+        return Utils::isSideEffectFree($expr);
     }
 
 }

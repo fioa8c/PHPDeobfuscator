@@ -5,6 +5,7 @@ namespace PHPDeobfuscator;
 use League\Flysystem\Filesystem;
 use League\Flysystem\PathTraversalDetected;
 use PhpParser\Node;
+use PhpParser\Node\Expr;
 use PhpParser\Node\Scalar;
 
 use PHPDeobfuscator\ValRef\ArrayVal;
@@ -133,5 +134,70 @@ class Utils
             return false;
         }
     }
-}
 
+    /**
+     * True when evaluating $expr cannot have any observable effect: it reads
+     * only literals, variables, constants and pure operators. Anything that
+     * could call code (FuncCall, New_, MethodCall, Eval_, Include_, ShellExec,
+     * a nested assignment, inc/dec, closure, match, …) is rejected - such a
+     * value is kept even if the variable is unread.
+     */
+    public static function isSideEffectFree(Node $expr): bool
+    {
+        static $pure = [
+            Expr\ConstFetch::class, Expr\ClassConstFetch::class, Node\Scalar\String_::class,
+            Node\Scalar\LNumber::class, Node\Scalar\DNumber::class, Node\Scalar\Encapsed::class,
+            Node\Scalar\EncapsedStringPart::class, Node\Scalar\MagicConst::class,
+            Expr\BinaryOp::class, Expr\UnaryMinus::class, Expr\UnaryPlus::class,
+            Expr\BooleanNot::class, Expr\BitwiseNot::class,
+            Expr\Cast\Int_::class, Expr\Cast\Double::class, Expr\Cast\String_::class,
+            Expr\Cast\Bool_::class, Expr\Cast\Array_::class, Expr\Cast\Object_::class,
+            Expr\Ternary::class, Expr\ArrayDimFetch::class, Expr\ConstFetch::class,
+        ];
+        if ($expr instanceof Expr\Variable) {
+            return is_string($expr->name);
+        }
+        if ($expr instanceof Expr\Array_) {
+            foreach ($expr->items as $item) {
+                if ($item === null) {
+                    continue;
+                }
+                if ($item->byRef) {
+                    return false;
+                }
+                if ($item->key !== null && !self::isSideEffectFree($item->key)) {
+                    return false;
+                }
+                if (!self::isSideEffectFree($item->value)) {
+                    return false;
+                }
+            }
+            return true;
+        }
+        $ok = false;
+        foreach ($pure as $class) {
+            if ($expr instanceof $class) {
+                $ok = true;
+                break;
+            }
+        }
+        if (!$ok) {
+            return false;
+        }
+        // All sub-expressions must also be pure (e.g. both sides of a BinaryOp).
+        foreach ($expr->getSubNodeNames() as $sub) {
+            $child = $expr->$sub;
+            if ($child instanceof Expr && !self::isSideEffectFree($child)) {
+                return false;
+            }
+            if (is_array($child)) {
+                foreach ($child as $c) {
+                    if ($c instanceof Expr && !self::isSideEffectFree($c)) {
+                        return false;
+                    }
+                }
+            }
+        }
+        return true;
+    }
+}
