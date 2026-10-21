@@ -136,3 +136,113 @@ INPUT
 eval(base64_decode("dGhpcyBpcyBub3QgcGhwIHt7ew=="));
 OUTPUT
 eval("this is not php {{{");
+INPUT
+$x = 1 << -1;
+$y = 1 >> -1;
+echo $x, $y;
+OUTPUT
+$x = 1 << -1;
+$y = 1 >> -1;
+echo $x, $y;
+INPUT
+$o = new stdClass();
+$o->a = 1;
+$s = "x" . $o;
+$t = (string) $o;
+echo $s, $t;
+OUTPUT
+$o = new stdClass();
+$o->a = 1;
+$s = "x" . $o;
+$t = (string) $o;
+echo $s, $t;
+INPUT
+$x = "5 apples" + 1;
+$y = (string) [1, 2];
+echo $x, $y;
+OUTPUT
+$x = 6;
+$y = "Array";
+echo 6, "Array";
+INPUT
+try {
+    echo 0;
+    goto a;
+} catch (Exception $e) {
+    a:
+    echo 1;
+}
+echo 2;
+OUTPUT
+try {
+    echo 0;
+    goto a;
+} catch (Exception $e) {
+    a:
+    echo 1;
+}
+echo 2;
+INPUT
+if ($_GET['x']) {
+    goto a;
+} else {
+    a:
+    echo 2;
+}
+echo 3;
+OUTPUT
+if ($_GET['x']) {
+    a:
+    echo 2;
+} else {
+    // [PHPDeobfuscator] Implied goto
+    goto a;
+}
+echo 3;
+INPUT
+$x = pack("a2000000000", "x");
+$y = pack("a4", "x");
+$z = sprintf("%*d", 2000000000, 1);
+$w = number_format(1.0, 2000000000);
+$v = number_format(1234.5, 2);
+echo $x, $y, $z, $w, $v;
+OUTPUT
+$x = pack("a2000000000", "x");
+$y = "x\x00\x00\x00";
+$z = sprintf("%*d", 2000000000, 1);
+$w = number_format(1.0, 2000000000);
+$v = "1,234.50";
+echo $x, "x\x00\x00\x00", $z, $w, "1,234.50";
+INPUT
+$a = array_fill(0, 3, str_repeat("a", 30));
+$b = implode("-", ["aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"]);
+$c = json_encode(["aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"]);
+$d = strtr(str_repeat("a", 32), ["a" => "bbb"]);
+$e = sprintf("%s%s", str_repeat("a", 40), str_repeat("b", 40));
+$s = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+$f = levenshtein($s, $s);
+$g = similar_text($s, $s);
+$h = str_split("abcdefghij");
+$i = str_split("abcd", 2);
+$j = explode(",", "a,b,c,d,e,f,g,h,i,j,k,l,m,n,o,p");
+$k = unpack("C*", "abcdefghij");
+$l = implode(",", ["a", "b"]);
+echo $a, $b, $c, $d, $e, $f, $g, $h, $i, $j, $k, $l;
+OUTPUT
+$a = array_fill(0, 3, "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");
+$b = implode("-", ["aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"]);
+$c = json_encode(["aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"]);
+$d = strtr("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", ["a" => "bbb"]);
+$e = sprintf("%s%s", "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb");
+$s = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+$f = levenshtein($s, $s);
+$g = similar_text($s, $s);
+$h = str_split("abcdefghij");
+$i = array(0 => "ab", 1 => "cd");
+$j = explode(",", "a,b,c,d,e,f,g,h,i,j,k,l,m,n,o,p");
+$k = unpack("C*", "abcdefghij");
+$l = "a,b";
+echo $a, $b, $c, $d, $e, $f, $g, $h, array(0 => "ab", 1 => "cd"), $j, $k, "a,b";
+OPTIONS
+max-builtin-bytes=64
+max-builtin-items=4

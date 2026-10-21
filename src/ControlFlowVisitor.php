@@ -41,6 +41,8 @@ class LabelScope
         $this->blockStack[] = $this->currentBlock;
         $nested = $this->getBlock($this->mkname($name));
         $nested->setDefined();
+        $nested->nestedRoot = true;
+        $nested->nestedKind = $name;
         $this->currentBlock->addNested($nested);
         $this->currentBlock = $nested;
         return $nested;
@@ -113,8 +115,22 @@ class ControlFlowVisitor extends \PhpParser\NodeVisitorAbstract
         if ($node instanceof Stmt\Label) {
             $block = $this->scope->getBlock($node->name->name);
             $block->setDefined();
-            if ($this->scope->currentBlock->isEmpty()) {
-                $this->scope->currentBlock->setAlias($block);
+            // An empty block can simply become the label's block - unless it is
+            // the root of a nested body (an else/catch/case/loop body that
+            // starts with a label). That block is referenced by its parent's
+            // buildLater attribute and must stay rebuildable, so it gets an
+            // explicit jump instead of being aliased away.
+            $cur = $this->scope->currentBlock;
+            if ($cur->isEmpty() && $cur->nestedRoot
+                && in_array($cur->nestedKind, array('_TryCatch', '_Catch_', '_Finally_'), true)) {
+                // The rebuild inlines a label's code at the first jump to it, which
+                // would move this body out of (or into) the try/catch that guards
+                // it and change which exceptions are caught. Refuse; the caller
+                // falls back to the unrewritten tree.
+                throw new \Exception("Label at the head of a {$cur->nestedKind} body (block {$cur->name})");
+            }
+            if ($cur->isEmpty() && !$cur->nestedRoot) {
+                $cur->setAlias($block);
             } else {
                 // Add explicit goto from the implicit fall through
                 $this->scope->currentBlock->append(new Stmt\Goto_($node->name, array(
@@ -294,6 +310,10 @@ class WrappedNode implements Node
 class CodeBlock
 {
     public $name;
+    /** True for the root block of a nested statement list (see LabelScope::makeNested). */
+    public $nestedRoot = false;
+    /** The construct that owns a nested root ('_Catch_', '_Else_', …). */
+    public $nestedKind = null;
     private $exitBlock;
     // Blocks which enter our block (indexed by their name)
     private $enters = array();

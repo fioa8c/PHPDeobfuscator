@@ -29,7 +29,7 @@ class Deobfuscator
     /** Sandbox worker, kept alive for the lifetime of this deobfuscator. */
     private ?PureFunction\PureFunctionExecutor $pureExecutor = null;
 
-    public function __construct($dumpOrig = false, $annotateReductions = false, $stripComments = false, $executePureFunctions = false, ?int $maxInlineFileBytes = null, $removeDeadCode = false, $renameVars = false)
+    public function __construct($dumpOrig = false, $annotateReductions = false, $stripComments = false, $executePureFunctions = false, ?int $maxInlineFileBytes = null, $removeDeadCode = false, $renameVars = false, ?int $maxBuiltinResultBytes = null, ?int $maxBuiltinResultItems = null)
     {
         if ($removeDeadCode) {
             $this->deadCode = new DeadCodeEliminator();
@@ -70,7 +70,7 @@ class Deobfuscator
         $funcCallReducer->addReducer(new Reducer\FuncCallReducer\FunctionSandbox());
         $funcCallReducer->addReducer(new Reducer\FuncCallReducer\FileSystemCall($this->fileSystem, $maxInlineFileBytes));
         $funcCallReducer->addReducer(new Reducer\FuncCallReducer\MiscFunctions($evalReducer, $resolver));
-        $funcCallReducer->addReducer(new Reducer\FuncCallReducer\PassThrough());
+        $funcCallReducer->addReducer(new Reducer\FuncCallReducer\PassThrough($maxBuiltinResultBytes, $maxBuiltinResultItems));
 
         if ($executePureFunctions) {
             $this->pureExecutor = new PureFunction\PureFunctionExecutor();
@@ -219,7 +219,27 @@ class Deobfuscator
             // annotation comments, added downstream, are preserved.
             $tree = $this->commentStrip->traverse($tree);
         }
-        $tree = $this->firstPass->traverse($tree);
+        // The goto/label rewrite throws on control-flow shapes it cannot model.
+        // It mutates the tree as it goes, so keep a pristine copy and fall back
+        // to it: the second pass still runs, with the goto code left as written.
+        // Every such throw originates in label/goto handling, so a tree without
+        // either needs no copy (the clone costs ~25% on a 30 MB sample).
+        $pristine = null;
+        if ((new \PhpParser\NodeFinder())->findFirst($tree, static function (\PhpParser\Node $n) {
+            return $n instanceof \PhpParser\Node\Stmt\Label || $n instanceof \PhpParser\Node\Stmt\Goto_;
+        }) !== null) {
+            $pristine = Utils::cloneAst($tree);
+        }
+        try {
+            $tree = $this->firstPass->traverse($tree);
+        } catch (\Throwable $e) {
+            if ($pristine === null) {
+                throw $e; // not a goto-shape failure: a genuine bug, surface it
+            }
+            error_log('PHPDeobfuscator: goto rewrite skipped (' . $e->getMessage() . ')');
+            $tree = $pristine;
+        }
+        unset($pristine);
         $tree = $this->closurePrepass->traverse($tree);
         $tree = $this->secondPass->traverse($tree);
         if ($this->deadCode !== null) {

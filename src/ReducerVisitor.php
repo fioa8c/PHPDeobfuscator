@@ -34,8 +34,17 @@ class ReducerVisitor extends \PhpParser\NodeVisitorAbstract
         if ($node instanceof Node\Stmt\Expression && $node->expr instanceof MaybeStmtArray) {
             return $node->expr->stmts;
         }
+        $reducer = $this->reducerByClass[get_class($node)] ?? null;
+        if ($reducer === null) {
+            return null; // nothing to do, and no handler churn for the majority of nodes
+        }
+        // Builtins and operators evaluated on hostile literals raise warnings and
+        // deprecations ("5 apples" + 1, (string) [1]). The result is still what
+        // PHP would compute; the diagnostic must not reach stdout, where the
+        // CLI writes the deobfuscated source.
+        set_error_handler(static function () { return true; }, E_WARNING | E_NOTICE | E_DEPRECATED | E_USER_WARNING | E_USER_NOTICE | E_USER_DEPRECATED);
         try {
-            $newNode = $this->reduceNode($node);
+            $newNode = $reducer->reduce($node, $this);
             // Reducer wants to return a statement array, we forward this request if we'e inside a Stmt\Expression
             // Otherwise, use the fallback expression
             if ($newNode instanceof MaybeStmtArray) {
@@ -45,19 +54,20 @@ class ReducerVisitor extends \PhpParser\NodeVisitorAbstract
                 return $newNode->expr;
             }
             return $newNode;
-        } catch (Exceptions\BadValueException | \TypeError | \DivisionByZeroError | \ValueError | \ArgumentCountError $e) {
+        } catch (Exceptions\BadValueException | \TypeError | \ArithmeticError | \ValueError | \ArgumentCountError $e) {
             // PHP 8 raises \TypeError on arithmetic with non-numeric strings
-            // (e.g. "abc" - 1) and \DivisionByZeroError on x % 0. Treat these
+            // (e.g. "abc" - 1), \DivisionByZeroError on x % 0 and its parent
+            // \ArithmeticError on 1 << -1 or intdiv(PHP_INT_MIN, -1). Treat these
             // the same as BadValueException: skip the reduction, leave the
             // original node intact.
-        }
-    }
-
-    private function reduceNode(Node $node)
-    {
-        $className = get_class($node);
-        if (isset($this->reducerByClass[$className])) {
-            return $this->reducerByClass[$className]->reduce($node, $this);
+        } catch (\Error $e) {
+            // Anything else PHP throws while evaluating attacker-chosen operands
+            // (e.g. an object in string context). The robustness invariant is
+            // "degrade to unknown, never abort the file": keep the node and
+            // leave a breadcrumb.
+            error_log('PHPDeobfuscator: reduction skipped (' . $e->getMessage() . ')');
+        } finally {
+            restore_error_handler();
         }
     }
 }

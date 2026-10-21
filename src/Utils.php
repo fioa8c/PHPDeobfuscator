@@ -98,6 +98,20 @@ class Utils
         return self::getValueRef($node)->getValue();
     }
 
+    /**
+     * Like getValue(), but refuses objects. An operator applied to an object
+     * (`"x" . $obj`, `(string) $obj`) throws a plain \Error that no reducer
+     * can model as a value; treat the operand as unknown instead.
+     */
+    public static function getOperandValue(Node $node)
+    {
+        $value = self::getValue($node);
+        if (is_object($value)) {
+            throw new Exceptions\UnknownValueException("Object operand");
+        }
+        return $value;
+    }
+
     public static function refsToValues(array $refs)
     {
         $values = array();
