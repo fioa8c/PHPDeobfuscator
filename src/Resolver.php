@@ -27,6 +27,15 @@ class Resolver extends \PhpParser\NodeVisitorAbstract
     /** @var array<string, \PhpParser\Node\Expr\Closure> */
     private array $globalClosures = [];
 
+    /**
+     * Stack, one entry per enclosing `switch`: the names its cases may write
+     * (so only those become uncertain at each `case` boundary), or null when
+     * the switch mutates something unanalysable (variable-variable, a
+     * `$GLOBALS[...]` write, extract/parse_str) — then every variable is marked
+     * mutable, as before. Mirrors how loops/`if` narrow via branchMutatedNames.
+     */
+    private array $switchMutatedStack = [];
+
     /** @var array<string, \PhpParser\Node\Stmt\Function_> */
     private array $userFunctions = [];
     /** Bumped on every registerUserFunction(); lets callers invalidate memoized inlining results. */
@@ -103,8 +112,27 @@ class Resolver extends \PhpParser\NodeVisitorAbstract
         if ($node instanceof Stmt\While_ || $node instanceof Stmt\Do_) {
             $this->setCurrentVarsMutable($this->loopMutatedNames($node));
         }
-        if ($node instanceof Stmt\Case_ || $node instanceof Stmt\Label) {
-            // Conditional execution: any variable might or might not be written.
+        if ($node instanceof Stmt\Switch_) {
+            // Narrow which variables a `case` boundary makes uncertain to those
+            // the switch may actually write (like If_/loops do via
+            // branchMutatedNames). A `$GLOBALS[...]` write surfaces only as the
+            // name 'GLOBALS', which does not identify the aliased global, so fall
+            // back to "everything mutable" for that switch to stay sound.
+            $names = $this->branchMutatedNames($node);
+            if ($names !== null && in_array('GLOBALS', $names, true)) {
+                $names = null;
+            }
+            $this->switchMutatedStack[] = $names;
+        }
+        if ($node instanceof Stmt\Case_) {
+            // Conditional/fall-through execution: only variables the switch may
+            // write become uncertain at each case boundary. Read-only variables
+            // (and the $GLOBALS backing array) keep their value and stay reducible.
+            $names = empty($this->switchMutatedStack) ? null : end($this->switchMutatedStack);
+            $this->setCurrentVarsMutable($names);
+        }
+        if ($node instanceof Stmt\Label) {
+            // A goto target is reachable from anywhere: any variable might differ.
             $this->setCurrentVarsMutable();
         }
     }
@@ -141,6 +169,9 @@ class Resolver extends \PhpParser\NodeVisitorAbstract
             // Value tracking hit something it cannot model. Losing precision is
             // acceptable; aborting the deobfuscation of the whole file is not.
             $this->setCurrentVarsMutable();
+        }
+        if ($node instanceof Stmt\Switch_) {
+            array_pop($this->switchMutatedStack);
         }
         if ($this->nodeCanBranch($node)) {
             // After a branch/loop, only the variables it may have written are
