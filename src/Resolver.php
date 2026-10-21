@@ -234,6 +234,14 @@ class Resolver extends \PhpParser\NodeVisitorAbstract
                 $var->setMutable(true);
             }
         }
+        // A `$GLOBALS[...]` write surfaces only as the name 'GLOBALS', which
+        // is a superglobal, not an entry of any scope's variable map, and does
+        // not identify the aliased global: every global may have changed.
+        if ($names !== null && in_array('GLOBALS', $names, true)) {
+            foreach ($this->getGlobalScope()->getVariables() as $var) {
+                $var->setMutable(true);
+            }
+        }
     }
 
     /**

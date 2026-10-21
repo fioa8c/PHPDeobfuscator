@@ -3,8 +3,10 @@
 namespace PHPDeobfuscator\Reducer;
 
 use PhpParser\Node;
+use PHPDeobfuscator\AttrName;
 use PHPDeobfuscator\Utils;
 use PHPDeobfuscator\Exceptions;
+use PHPDeobfuscator\ValRef\ScalarValue;
 
 class MiscReducer extends AbstractReducer
 {
@@ -61,6 +63,41 @@ class MiscReducer extends AbstractReducer
             return;
         }
         return new Node\Stmt\Return_(Utils::scalarToNode(Utils::getValue($node->expr)));
+    }
+
+    /**
+     * Substitutes the value of a `$GLOBALS[...]` read whose scalar value is
+     * proven, e.g. `$fn = $GLOBALS['hp']['o4'];` -> `$fn = "openssl_decrypt";`.
+     * Obfuscators keep their builtin names in a global lookup table so that
+     * the branches of a dispatcher read as `$fn === $GLOBALS['hp']['q9']`.
+     *
+     * A bare read is only sound to replace where the parent provably takes
+     * the value (ReducerVisitor tags those positions, see
+     * AttrName::READ_CONTEXT); an assignment target, a by-ref binding, an
+     * `isset`/`unset`, a foreach target or any function-call argument (the
+     * callee's by-ref parameters are not knowable) is left as written. Only
+     * a non-mutable ScalarValue qualifies - a global the Resolver could not
+     * prove constant (reassigned inside a branch) carries a mutable ValRef
+     * and is refused.
+     */
+    public function reduceArrayDimFetch(Node\Expr\ArrayDimFetch $node)
+    {
+        if ($node->getAttribute(AttrName::READ_CONTEXT) !== true
+            || $node->getAttribute(AttrName::LVALUE) === true) {
+            return;
+        }
+        $root = $node;
+        while ($root instanceof Node\Expr\ArrayDimFetch) {
+            $root = $root->var;
+        }
+        if (!($root instanceof Node\Expr\Variable) || $root->name !== 'GLOBALS') {
+            return;
+        }
+        $valRef = $node->getAttribute(AttrName::VALUE);
+        if (!($valRef instanceof ScalarValue) || $valRef->isMutable()) {
+            return;
+        }
+        return Utils::scalarToNode($valRef->getValue());
     }
 
     /**

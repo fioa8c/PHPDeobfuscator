@@ -143,6 +143,8 @@ Top-level reducers: `BinaryOpReducer`, `EvalReducer`, `FuncCallReducer`, `MagicR
 
 `MiscReducer::reduceNew` resolves `new $cls(...)` to `new ActualClass(...)` when the class expression provably holds a valid class identifier — obfuscators hide the revealing classes (`mysqli`, `ZipArchive`) behind a variable.
 
+`MiscReducer::reduceArrayDimFetch` substitutes a proven scalar for a bare `$GLOBALS[...]` read (`$fn = $GLOBALS['hp']['o4'];` → `$fn = "openssl_decrypt";`), the lookup-table shape webshell dispatchers use. A bare read is only sound to replace where the parent provably takes the value, and the second pass has no parent attribute, so `ReducerVisitor::enterNode` tags child positions: `AttrName::READ_CONTEXT` on an `Assign` RHS, `BinaryOp` operands, non-by-ref `Array_` items, `Ternary` parts and `Echo_`/`Return_` expressions; `AttrName::LVALUE` on assignment/`++`/`unset`/`isset`/`empty`/`foreach`/destructuring targets, which wins because the Resolver's `AssignOp` rewrite shares one node between target and operand. Function-call arguments are never tagged (the callee's by-ref parameters are not knowable). Only a non-mutable `ScalarValue` qualifies: a `$GLOBALS[...]` write inside a branch/loop surfaces as the name `GLOBALS`, which `Resolver::setCurrentVarsMutable` now treats as "every global may have changed". Fixture coverage: `tests/globals.txt`.
+
 ### FuncCallReducer plugins
 
 `FuncCallReducer` is itself a registry of `FunctionReducer` plugins (`src/Reducer/FuncCallReducer/`) keyed by lowercased PHP function name:

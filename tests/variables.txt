@@ -309,7 +309,7 @@ OUTPUT
 $GLOBALS['hp'] = ['cb' => "decode_it"];
 switch ($a) {
     case 'x':
-        $fn = $GLOBALS['hp']['cb'];
+        $fn = "decode_it";
         $n = decode_it("hello");
         break;
 }
