@@ -57,6 +57,8 @@ TXT;
 
 $nodeDumper = new PhpParser\NodeDumper();
 if (php_sapi_name() == 'cli') {
+    // stdout carries the deobfuscated source; keep PHP diagnostics off it.
+    ini_set('display_errors', 'stderr');
     $opts = getopt('tof:ajhcxeur');
     // Explicit help, or run with no arguments at all: print usage to stdout, exit 0.
     if (isset($opts['h']) || ($_SERVER['argc'] ?? 1) <= 1) {

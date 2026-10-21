@@ -31,12 +31,12 @@ class BinaryOpReducer extends AbstractReducer
 
     private function left(BinaryOp $node)
     {
-        return Utils::getValue($node->left);
+        return Utils::getOperandValue($node->left);
     }
 
     private function right(BinaryOp $node)
     {
-        return Utils::getValue($node->right);
+        return Utils::getOperandValue($node->right);
     }
 
     public function reduceBitwiseAnd(BinaryOp\BitwiseAnd $node)

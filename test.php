@@ -63,14 +63,27 @@ while ($testfile = readdir($d)) {
         $code = "<?php\n" . trim(implode('', $test['input']));
         $options = array_filter(array_map('trim', $test['options']), 'strlen');
         $maxInlineFile = null;
+        $maxBuiltinBytes = null;
+        $maxBuiltinItems = null;
         foreach ($options as $opt) {
             if (strpos($opt, 'max-inline-file=') === 0) {
                 $maxInlineFile = (int) substr($opt, strlen('max-inline-file='));
+            } elseif (strpos($opt, 'max-builtin-bytes=') === 0) {
+                $maxBuiltinBytes = (int) substr($opt, strlen('max-builtin-bytes='));
+            } elseif (strpos($opt, 'max-builtin-items=') === 0) {
+                $maxBuiltinItems = (int) substr($opt, strlen('max-builtin-items='));
             }
         }
-        $deobf = new \PHPDeobfuscator\Deobfuscator(false, false, false, in_array('execute-pure', $options, true), $maxInlineFile, in_array('remove-dead-code', $options, true), in_array('rename-vars', $options, true));
+        $deobf = new \PHPDeobfuscator\Deobfuscator(false, false, false, in_array('execute-pure', $options, true), $maxInlineFile, in_array('remove-dead-code', $options, true), in_array('rename-vars', $options, true), $maxBuiltinBytes, $maxBuiltinItems);
         $deobf->getFilesystem()->write($virtualPath, $code);
         $deobf->setCurrentFilename($virtualPath);
+        // A warning or notice during a run is a defect: on the CLI it would land on
+        // stdout and corrupt the output. Collect and report them per case.
+        $diagnostics = array();
+        set_error_handler(function ($errno, $errstr, $errfile, $errline) use (&$diagnostics) {
+            $diagnostics[] = "$errstr at $errfile:$errline";
+            return true;
+        }, E_ALL);
         try {
             $deobfTree = $deobf->deobfuscate($deobf->parse($code));
             $out = $deobf->prettyPrint($deobfTree);
@@ -78,6 +91,15 @@ while ($testfile = readdir($d)) {
             echo "Test $name failed:\n";
             echo "Exception: " . $e->getMessage() . "\n";
             echo $e->getTraceAsString() . "\n";
+            continue;
+        } finally {
+            restore_error_handler();
+        }
+        if ($diagnostics) {
+            echo "Test $name failed (diagnostics):\n";
+            foreach ($diagnostics as $d) {
+                echo "[]: $d\n";
+            }
             continue;
         }
         $expect = "<?php\n\n" . trim(implode('', $test['output']));
