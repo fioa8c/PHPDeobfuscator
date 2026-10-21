@@ -72,3 +72,103 @@ ANALYSIS
 sources:
 sinks:
   auto-exec  os_exec  line 4  system
+INPUT
+function dec($s)
+{
+    $k = $_SERVER['HTTP_USER_AGENT'];
+    return gzinflate(base64_decode($s) ^ $k);
+}
+eval(dec($blob));
+OUTPUT
+function dec($s)
+{
+    $k = $_SERVER['HTTP_USER_AGENT'];
+    return gzinflate(base64_decode($s) ^ $k);
+}
+eval(dec($blob));
+ANALYSIS
+sources:
+  in-function:dec  line 5  $_SERVER['HTTP_USER_AGENT']
+sinks:
+  auto-exec  code_exec  line 8  eval (tainted by $_SERVER)
+  in-function:dec  obfusc  line 6  base64_decode
+  in-function:dec  obfusc  line 6  gzinflate (tainted by $_SERVER)
+INPUT
+eval(dec($blob));
+function dec($s)
+{
+    $k = $_SERVER['HTTP_USER_AGENT'];
+    return gzinflate(base64_decode($s) ^ $k);
+}
+OUTPUT
+eval(dec($blob));
+function dec($s)
+{
+    $k = $_SERVER['HTTP_USER_AGENT'];
+    return gzinflate(base64_decode($s) ^ $k);
+}
+ANALYSIS
+sources:
+  in-function:dec  line 6  $_SERVER['HTTP_USER_AGENT']
+sinks:
+  auto-exec  code_exec  line 3  eval (tainted by $_SERVER)
+  in-function:dec  obfusc  line 7  base64_decode
+  in-function:dec  obfusc  line 7  gzinflate (tainted by $_SERVER)
+INPUT
+function a($s)
+{
+    return b($s);
+}
+function b($s)
+{
+    return $_SERVER['HTTP_X'] ^ $s;
+}
+eval(a($q));
+OUTPUT
+function a($s)
+{
+    return b($s);
+}
+function b($s)
+{
+    return $_SERVER['HTTP_X'] ^ $s;
+}
+eval(a($q));
+ANALYSIS
+sources:
+  in-function:b  line 9  $_SERVER['HTTP_X']
+sinks:
+  auto-exec  code_exec  line 11  eval (tainted by $_SERVER)
+INPUT
+function a($s)
+{
+    return b($s);
+}
+function b($s)
+{
+    return c($s);
+}
+function c($s)
+{
+    return $_SERVER['HTTP_X'] ^ $s;
+}
+eval(a($q));
+OUTPUT
+function a($s)
+{
+    return b($s);
+}
+function b($s)
+{
+    return c($s);
+}
+function c($s)
+{
+    return $_SERVER['HTTP_X'] ^ $s;
+}
+eval(a($q));
+ANALYSIS
+sources:
+  in-function:c  line 13  $_SERVER['HTTP_X']
+sinks:
+  auto-exec  code_exec  line 15  eval (tainted by $_SERVER)
